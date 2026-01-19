@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>日检达人 - Master Japanese Pro</title>
-    <!-- 基础样式与字体 -->
+    <!-- 基础样式与外部依赖 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -21,8 +21,6 @@
         .option-btn:active { transform: scale(0.96); background-color: #fce7f3; }
         #fireworks { pointer-events: none; position: fixed; inset: 0; z-index: 100; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     </style>
 </head>
 <body>
@@ -51,51 +49,71 @@
 
         console.log("System Initializing...");
 
-        // --- 1. 业务常量与初始题库 ---
+        // --- 1. 业务常量与内置初始题库 ---
         const JLPTLevel = { FIFTY_ON: '50音', N5: 'N5', N4: 'N4', N3: 'N3', N2: 'N2' };
         const Category = { KANA: '假名识别', VOCABULARY: '文字・词汇', GRAMMAR: '语法', LISTENING: '听力' };
-        const STORAGE_KEY = 'jp_master_pro_v6_final';
+        const STORAGE_KEY = 'jp_master_pro_v7_safe';
 
         const INITIAL_BANK = [
-            { id: 'k1', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「あ」的片假名是？', options: ['ア', 'イ', 'ウ', 'エ'], correctIndex: 0, translation: '“あ”对应的片假名。', coreAnalysis: 'あ对应ア。', wrongOptionsAnalysis: 'イ是い；ウ是う；エ是え。' },
-            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「さ」的片假名是？', options: ['キ', 'サ', 'チ', 'ラ'], correctIndex: 1, translation: '“さ”对应的片假名。', coreAnalysis: 'さ对应サ。', wrongOptionsAnalysis: '辨析：チ是ち。' },
-            { id: 'n5v1', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'あした、えいがを（　）。', options: ['みます', 'みました', 'みましょう', 'みてください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议。', wrongOptionsAnalysis: '1.陈述; 2.过去; 4.命令。' },
-            { id: 'n2g1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」强调唯一必要条件。', wrongOptionsAnalysis: '1.简单并列; 2.逆接; 3.因果语感不同。' }
+            { id: 'k1', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「あ」的片假名是？', options: ['ア', 'イ', 'ウ', 'エ'], correctIndex: 0, translation: '“あ”对应的片假名。', coreAnalysis: 'あ对应ア。', wrongOptionsAnalysis: 'イ是い；乌是う；エ是え。' },
+            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「さ」的片假名是？', options: ['キ', 'サ', 'チ', 'ラ'], correctIndex: 1, translation: '“さ”对应的片假名。', coreAnalysis: 'さ对应サ。', wrongOptionsAnalysis: '辨析：チ是ち，キ是き。' },
+            { id: 'n5v1', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'あした、えいがを（　）。', options: ['みます', 'みました', 'みましょう', 'みてください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议。', wrongOptionsAnalysis: 'みます(看); みました(看了); みてください(请看)。' },
+            { id: 'n2g1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」强调唯一必要条件。', wrongOptionsAnalysis: '其他选项语境不符。' }
         ];
 
-        // 扩充初始题库至 50 道，防止 API 延迟时无题可做
-        for(let i=0; i<46; i++) {
-            const lvls = Object.values(JLPTLevel);
-            const lvl = lvls[i % lvls.length];
-            INITIAL_BANK.push({
-                id: `seed_${i}`,
-                level: lvl,
-                category: lvl === JLPTLevel.FIFTY_ON ? Category.KANA : Category.VOCABULARY,
-                text: `${lvl} 练习题 ${i+1}:（　）の意味を選びなさい。`,
-                options: ['正解选项', '干扰 A', '干扰 B', '干扰 C'],
-                correctIndex: 0,
-                translation: '这是系统生成的补位翻译。',
-                coreAnalysis: '考查等级对应的核心词汇。',
-                wrongOptionsAnalysis: '其他选项语义不通。'
+        // 自动补全各模块基础题，确保 100% 有题可用
+        Object.values(JLPTLevel).forEach(lvl => {
+            Object.values(Category).forEach(cat => {
+                const existing = INITIAL_BANK.filter(q => q.level === lvl && q.category === cat);
+                if(existing.length < 5) {
+                    for(let i=0; i<10; i++){
+                        INITIAL_BANK.push({
+                            id: `fallback_${lvl}_${cat}_${i}`,
+                            level: lvl, category: cat,
+                            text: `${lvl} ${cat} 基础练习 ${i+1}:（　）に入れるのは？`,
+                            options: ['正确项', '干扰项A', '干扰项B', '干扰项C'],
+                            correctIndex: 0,
+                            translation: '练习题翻译。', coreAnalysis: '基础考点分析。', wrongOptionsAnalysis: '排除干扰项。'
+                        });
+                    }
+                }
             });
-        }
+        });
 
-        // --- 2. 核心服务封装 ---
+        // --- 2. 安全音效与语音服务 ---
         const audio = {
             ctx: null,
-            init() { if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
-            play(f, t, d) {
-                this.init();
-                const o = this.ctx.createOscillator();
-                const g = this.ctx.createGain();
-                o.type = t; o.frequency.setValueAtTime(f, this.ctx.currentTime);
-                g.gain.setValueAtTime(0.1, this.ctx.currentTime);
-                g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + d);
-                o.connect(g); g.connect(this.ctx.destination);
-                o.start(); o.stop(this.ctx.currentTime + d);
+            init() {
+                try {
+                    if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                } catch(e) { console.warn("AudioContext init failed", e); }
             },
-            correct() { this.play(880, 'sine', 0.4); },
-            wrong() { this.play(220, 'triangle', 0.5); }
+            play(f, t, d) {
+                try {
+                    this.init();
+                    if(!this.ctx || this.ctx.state === 'suspended') this.ctx?.resume();
+                    const o = this.ctx.createOscillator();
+                    const g = this.ctx.createGain();
+                    o.type = t; o.frequency.setValueAtTime(f, this.ctx.currentTime);
+                    g.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + d);
+                    o.connect(g); g.connect(this.ctx.destination);
+                    o.start(); o.stop(this.ctx.currentTime + d);
+                } catch(e) { console.error("Sound play failed", e); }
+            },
+            correct() { this.play(880, 'sine', 0.3); },
+            wrong() { this.play(220, 'triangle', 0.4); },
+            speak(text) {
+                if ('speechSynthesis' in window) {
+                    try {
+                        window.speechSynthesis.cancel();
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        utterance.lang = 'ja-JP';
+                        utterance.rate = 0.9;
+                        window.speechSynthesis.speak(utterance);
+                    } catch(e) { console.error("SpeechSynthesis failed", e); }
+                }
+            }
         };
 
         const Fireworks = {
@@ -109,20 +127,20 @@
             },
             spawn(x, y) {
                 this.active = true;
-                for(let i=0; i<60; i++){
+                for(let i=0; i<40; i++){
                     this.particles.push({
-                        x, y, vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15,
+                        x, y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12,
                         color: `hsl(${Math.random()*360}, 100%, 60%)`, life: 1, size: Math.random()*3+2
                     });
                 }
                 this.animate();
             },
             animate() {
-                if(!this.active) return;
+                if(!this.active || !this.ctx) return;
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 this.particles = this.particles.filter(p => p.life > 0);
                 this.particles.forEach(p => {
-                    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.012;
+                    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.015;
                     this.ctx.fillStyle = p.color;
                     this.ctx.globalAlpha = p.life;
                     this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); this.ctx.fill();
@@ -132,48 +150,14 @@
             }
         };
 
-        // --- 3. 组件部分 ---
-
-        const Loading = () => (
+        // --- 3. UI 子组件 ---
+        const LoadingComp = () => (
             <div className="flex flex-col items-center justify-center p-12 space-y-6">
                 <div className="relative w-16 h-16">
                     <div className="absolute inset-0 border-4 border-pink-100 rounded-full animate-ping"></div>
                     <div className="absolute inset-0 border-4 border-pink-500 rounded-full border-t-transparent animate-spin"></div>
                 </div>
-                <p className="text-gray-400 font-bold animate-pulse text-sm">AI 正在精准排题中...</p>
-            </div>
-        );
-
-        const ExplanationModal = ({ question, isCorrect, onNext }) => (
-            <div className="fixed inset-0 z-[60] flex items-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-                <div className="bg-white w-full rounded-t-[3rem] p-8 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
-                    <div className="flex items-center space-x-4 mb-6">
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
-                            <i className={`fa-solid ${isCorrect ? 'fa-check' : 'fa-times'}`}></i>
-                        </div>
-                        <div>
-                            <h3 className="text-2xl font-black">{isCorrect ? '正解です！' : '不对哦'}</h3>
-                            <p className="text-xs font-bold opacity-40">正确答案: {question.options[question.correctIndex]}</p>
-                        </div>
-                    </div>
-                    <div className="space-y-6 pb-10">
-                        <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 italic text-gray-700 text-lg leading-relaxed">
-                            “ {question.translation} ”
-                        </div>
-                        <div className="p-2">
-                            <p className="text-[10px] font-black text-green-500 mb-2 uppercase tracking-widest">核心解析 Analysis</p>
-                            <p className="text-gray-800 font-medium leading-relaxed text-lg">{question.coreAnalysis}</p>
-                        </div>
-                        <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">
-                            <p className="text-[10px] font-black text-rose-400 mb-2 uppercase tracking-widest">干扰项辨析 Distractors</p>
-                            {question.wrongOptionsAnalysis}
-                        </div>
-                        <button onClick={onNext} className="w-full bg-indigo-600 text-white font-black py-6 rounded-[2rem] shadow-2xl shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95 transition-all">
-                            <span>次へ / 下一题</span>
-                            <i className="fa-solid fa-arrow-right"></i>
-                        </button>
-                    </div>
-                </div>
+                <p className="text-gray-400 font-bold animate-pulse text-sm">正在为您智能生成题目...</p>
             </div>
         );
 
@@ -181,12 +165,15 @@
         const App = () => {
             const [view, setView] = useState('dashboard');
             const [appData, setAppData] = useState(() => {
-                const s = localStorage.getItem(STORAGE_KEY);
-                return s ? JSON.parse(s) : { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] };
+                try {
+                    const s = localStorage.getItem(STORAGE_KEY);
+                    return s ? JSON.parse(s) : { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] };
+                } catch(e) { return { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] }; }
             });
             const [test, setTest] = useState({ level: JLPTLevel.N5, category: Category.VOCABULARY, queue: [], currentIndex: 0, showExp: false, isCorrect: null, isReview: false, loading: false });
             const [masteryModal, setMasteryModal] = useState(null);
             const [scoreAni, setScoreAni] = useState(false);
+            const loadingTimeout = useRef(null);
 
             useEffect(() => {
                 Fireworks.init();
@@ -197,43 +184,71 @@
 
             const save = (data) => {
                 setAppData(data);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
             };
 
-            // AI 题库扩充逻辑
-            const fetchMoreQuestions = async (lvl, cat) => {
+            const fetchQuestions = async (lvl, cat) => {
+                console.log(`Fetching questions for ${lvl} - ${cat}...`);
                 const key = process.env.API_KEY;
-                if(!key) return INITIAL_BANK.filter(q => q.level === lvl && q.category === cat).sort(() => Math.random() - 0.5).slice(0, 10);
+                // 如果没有 Key 或者请求失败，使用内置题库
+                const local = INITIAL_BANK.filter(q => q.level === lvl && q.category === cat).sort(() => Math.random() - 0.5).slice(0, 10);
                 
-                const ai = new GoogleGenAI({ apiKey: key });
-                const prompt = `生成 10 道日语测试题。等级：${lvl}，类别：${cat}。必须返回 JSON 数组格式。每个对象包含 text, options(4个), correctIndex, translation, coreAnalysis, wrongOptionsAnalysis。`;
+                if(!key) return local;
+
                 try {
+                    const ai = new GoogleGenAI({ apiKey: key });
                     const res = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
-                        contents: prompt,
+                        contents: `生成 10 道 ${lvl} 级别的 ${cat} 题目，必须是 JSON 数组格式。包含 text, options, correctIndex, translation, coreAnalysis, wrongOptionsAnalysis。`,
                         config: { responseMimeType: "application/json" }
                     });
-                    return JSON.parse(res.text).map(d => ({ ...d, id: Math.random().toString(36).substr(2, 9), level: lvl, category: cat }));
+                    const data = JSON.parse(res.text);
+                    return data.map(d => ({ ...d, id: Math.random().toString(36).substr(2, 9), level: lvl, category: cat }));
                 } catch(e) {
-                    return INITIAL_BANK.filter(q => q.level === lvl && q.category === cat).sort(() => Math.random() - 0.5).slice(0, 10);
+                    console.error("AI Fetch Error, using local bank:", e);
+                    return local;
                 }
             };
 
             const startTest = async (lvl, cat, customQueue = null) => {
-                setTest(p => ({ ...p, loading: !customQueue, level: lvl, category: cat, isReview: !!customQueue }));
+                console.log(`Starting test: ${lvl} ${cat}`);
+                if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
+
+                setTest(p => ({ ...p, loading: !customQueue, level: lvl, category: cat, isReview: !!customQueue, queue: [] }));
                 setView('test');
                 window.scrollTo(0, 0);
 
-                if(customQueue) {
-                    setTest(p => ({ ...p, queue: customQueue, currentIndex: 0, showExp: false, loading: false }));
-                } else {
-                    const q = await fetchMoreQuestions(lvl, cat);
+                // 超时保护：3秒内如果不成功则报错并返回
+                if (!customQueue) {
+                    loadingTimeout.current = setTimeout(() => {
+                        if (test.loading) {
+                            alert("加载超时，请检查网络后重试");
+                            setView('dashboard');
+                            setTest(p => ({ ...p, loading: false }));
+                        }
+                    }, 5000);
+                }
+
+                try {
+                    const q = customQueue || await fetchQuestions(lvl, cat);
+                    if (!q || q.length === 0) {
+                        alert("该模块题目正在加载中，请稍后再试");
+                        setView('dashboard');
+                        return;
+                    }
+                    if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
                     setTest(p => ({ ...p, queue: q, currentIndex: 0, showExp: false, loading: false }));
+                } catch(e) {
+                    console.error("StartTest error", e);
+                    setView('dashboard');
                 }
             };
 
             const handleAnswer = (idx) => {
                 const cur = test.queue[test.currentIndex];
+                if (!cur) return;
+                console.log(`Answered Question ID: ${cur.id}, Choice: ${idx}`);
+                
                 const correct = idx === cur.correctIndex;
                 if(correct) audio.correct(); else audio.wrong();
 
@@ -254,25 +269,23 @@
                         const nextIdx = lvls.indexOf(test.level) + 1;
                         if(nextIdx < lvls.length && !newData.unlocked.includes(lvls[nextIdx])) newData.unlocked.push(lvls[nextIdx]);
                     }
-
                     setScoreAni(true);
                     setTimeout(() => setScoreAni(false), 500);
                     save(newData);
                 }
-
                 setTest(p => ({ ...p, isCorrect: correct, showExp: true }));
             };
 
             const next = async () => {
+                console.log(`Proceeding from Index: ${test.currentIndex}`);
                 if(test.currentIndex < test.queue.length - 1) {
                     setTest(p => ({ ...p, currentIndex: p.currentIndex + 1, showExp: false, isCorrect: null }));
                     window.scrollTo({top: 0, behavior: 'smooth'});
                 } else if(test.isReview) {
                     setView('dashboard');
                 } else {
-                    // 智能续载
                     setTest(p => ({ ...p, loading: true }));
-                    const more = await fetchMoreQuestions(test.level, test.category);
+                    const more = await fetchQuestions(test.level, test.category);
                     setTest(p => ({ ...p, queue: [...p.queue, ...more], currentIndex: p.currentIndex + 1, showExp: false, loading: false }));
                     window.scrollTo({top: 0, behavior: 'smooth'});
                 }
@@ -288,7 +301,7 @@
                             <header className="flex justify-between items-end pt-6">
                                 <div>
                                     <h1 className="text-4xl font-black text-gray-800 japanese-serif tracking-tighter">日检达人</h1>
-                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">Japanese Mastery Pro</p>
+                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">Safety Pro Engine v7</p>
                                 </div>
                                 <button onClick={() => setView('review')} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl text-rose-500 active:scale-90 transition-all">
                                     <i className="fa-solid fa-ghost text-xl"></i>
@@ -309,15 +322,14 @@
                                             <div className="grid gap-3">
                                                 {cats.map(c => {
                                                     const s = appData.scores[`${lvl}_${c}`] || 0;
-                                                    const m = s >= 100;
                                                     return (
                                                         <button key={c} onClick={() => startTest(lvl, c)} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-transparent hover:border-pink-200 hover:bg-white active:scale-95 transition-all group">
                                                             <div className="flex flex-col text-left">
                                                                 <span className="text-xs font-bold text-gray-500 group-hover:text-pink-500">{c}</span>
-                                                                <span className="text-[9px] text-gray-400 font-medium italic">模块精通度: {Math.min(s, 100)}%</span>
+                                                                <span className="text-[9px] text-gray-400 font-medium">精通: {Math.min(s, 100)}%</span>
                                                             </div>
                                                             <div className="flex items-center">
-                                                                {m ? <i className="fa-solid fa-check-circle text-green-500 text-lg"></i> : <span className="text-sm font-black text-gray-700">{s}</span>}
+                                                                {s >= 100 ? <i className="fa-solid fa-check-circle text-green-500"></i> : <span className="text-sm font-black text-gray-700">{s}</span>}
                                                             </div>
                                                         </button>
                                                     );
@@ -339,25 +351,27 @@
                                     </button>
                                     <div className="flex flex-col items-center">
                                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">{test.level} · {test.category}</span>
-                                        <span className={`text-xs font-bold transition-all ${scoreAni ? 'scale-125 text-pink-500' : 'text-gray-700'}`}>
-                                            模块精通度: {score}%
-                                        </span>
+                                        <span className={`text-xs font-bold transition-all ${scoreAni ? 'scale-125 text-pink-500' : 'text-gray-700'}`}>模块精通: {score}%</span>
                                     </div>
                                     <div className="w-10"></div>
                                 </div>
-                                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
                                     <div className={`h-full transition-all duration-700 ease-out ${score <= 60 ? 'bg-orange-500' : (score <= 90 ? 'bg-blue-500' : 'bg-green-500')}`} style={{ width: `${Math.min(score, 100)}%` }}></div>
                                 </div>
                             </div>
 
                             <div className="flex-1 flex flex-col py-6 space-y-10 animate-in slide-in-from-bottom-6 duration-500">
-                                {test.loading ? <Loading /> : test.queue[test.currentIndex] ? (
+                                {test.loading ? <LoadingComp /> : test.queue[test.currentIndex] ? (
                                     <>
                                         <div className="bg-white rounded-[2.5rem] p-10 shadow-xl border border-pink-50 text-center relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-pink-500"></div>
                                             <p className="text-3xl font-bold text-gray-800 japanese-serif leading-tight">
                                                 {test.queue[test.currentIndex].text}
                                             </p>
+                                            <button onClick={() => audio.speak(test.queue[test.currentIndex].text)} className="mt-4 text-pink-400 text-sm font-bold flex items-center justify-center mx-auto space-x-1 opacity-50 active:opacity-100 transition-opacity">
+                                                <i className="fa-solid fa-volume-high"></i>
+                                                <span>发音参考</span>
+                                            </button>
                                         </div>
                                         <div className="grid gap-4 pb-12">
                                             {test.queue[test.currentIndex].options.map((opt, i) => (
@@ -368,13 +382,13 @@
                                             ))}
                                         </div>
                                     </>
-                                ) : <div className="text-center py-20 text-gray-300 italic">找不到题目，正在重试...</div>}
+                                ) : <div className="text-center py-20 text-gray-300 italic">队列填充中...</div>}
                             </div>
                         </div>
                     )}
 
                     {view === 'review' && (
-                        <div className="p-6 animate-in slide-in-from-right-10 pt-10 max-w-lg mx-auto w-full pb-20">
+                        <div className="p-6 pt-10 max-w-lg mx-auto w-full pb-20 animate-in slide-in-from-right-10">
                             <div className="flex items-center space-x-4 mb-10">
                                 <button onClick={() => setView('dashboard')} className="w-12 h-12 rounded-full bg-white border flex items-center justify-center shadow-lg text-gray-400 active:scale-90 transition-all">
                                     <i className="fa-solid fa-arrow-left text-lg"></i>
@@ -383,9 +397,7 @@
                             </div>
                             {appData.wrongQuestions.length === 0 ? (
                                 <div className="text-center py-32 space-y-6">
-                                    <div className="animate-float">
-                                        <i className="fa-solid fa-trophy text-7xl text-yellow-400 drop-shadow-lg"></i>
-                                    </div>
+                                    <i className="fa-solid fa-trophy text-7xl text-yellow-400 drop-shadow-lg animate-bounce"></i>
                                     <p className="text-gray-400 font-black text-xl">全清达成！你是日语天才</p>
                                 </div>
                             ) : (
@@ -396,7 +408,7 @@
                                                 <p className="text-[10px] font-black text-pink-400 mb-1 uppercase tracking-widest">{q.level} · {q.category}</p>
                                                 <p className="font-bold text-gray-700 line-clamp-1 text-lg">{q.text}</p>
                                             </div>
-                                            <button onClick={() => startTest(q.level, q.category, [q])} className="bg-rose-500 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg active:scale-90 transition-all">挑战</button>
+                                            <button onClick={() => startTest(q.level, q.category, [q])} className="bg-rose-500 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg">挑战</button>
                                         </div>
                                     ))}
                                 </div>
@@ -404,17 +416,44 @@
                         </div>
                     )}
 
-                    {test.showExp && <ExplanationModal 
-                        question={test.queue[test.currentIndex]} 
-                        isCorrect={test.isCorrect} 
-                        onNext={() => {
-                            if(test.isReview && test.isCorrect) {
-                                const newData = { ...appData, wrongQuestions: appData.wrongQuestions.filter(q => q.id !== test.queue[test.currentIndex].id) };
-                                save(newData);
-                            }
-                            next();
-                        }}
-                    />}
+                    {test.showExp && (
+                        <div className="fixed inset-0 z-[60] flex items-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+                            <div className="bg-white w-full rounded-t-[3rem] p-8 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl animate-in slide-in-from-bottom-20">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${test.isCorrect ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                                        <i className={`fa-solid ${test.isCorrect ? 'fa-check' : 'fa-times'}`}></i>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-2xl font-black">{test.isCorrect ? '正解です！' : '不对哦'}</h3>
+                                        <p className="text-xs font-bold opacity-40 uppercase">正确答案: {test.queue[test.currentIndex].options[test.queue[test.currentIndex].correctIndex]}</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-6 pb-10">
+                                    <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 italic text-gray-700 text-lg leading-relaxed">
+                                        “ {test.queue[test.currentIndex].translation} ”
+                                    </div>
+                                    <div className="p-2">
+                                        <p className="text-[10px] font-black text-green-500 mb-2 uppercase tracking-widest">核心解析 Analysis</p>
+                                        <p className="text-gray-800 font-medium leading-relaxed text-lg">{test.queue[test.currentIndex].coreAnalysis}</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">
+                                        <p className="text-[10px] font-black text-rose-400 mb-2 uppercase tracking-widest">干扰项辨析 Distractors</p>
+                                        {test.queue[test.currentIndex].wrongOptionsAnalysis}
+                                    </div>
+                                    <button onClick={() => {
+                                        if(test.isReview && test.isCorrect) {
+                                            const updated = { ...appData, wrongQuestions: appData.wrongQuestions.filter(q => q.id !== test.queue[test.currentIndex].id) };
+                                            save(updated);
+                                        }
+                                        next();
+                                    }} className="w-full bg-indigo-600 text-white font-black py-6 rounded-[2rem] shadow-2xl shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95 transition-all">
+                                        <span>次へ / 下一题</span>
+                                        <i className="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {masteryModal && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-pink-500/20 backdrop-blur-xl p-6">
