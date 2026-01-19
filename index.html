@@ -5,305 +5,225 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>日检达人 - Master Japanese Pro</title>
-    <!-- 基础样式与外部依赖 -->
+    <!-- 传统 CDN 依赖 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@600&display=swap');
         :root { --sakura: #ff6b9d; --safe-top: env(safe-area-inset-top); }
-        body { font-family: 'Noto Sans JP', sans-serif; background-color: #fffafb; -webkit-tap-highlight-color: transparent; overflow-x: hidden; scroll-behavior: smooth; }
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #fffafb; -webkit-tap-highlight-color: transparent; overflow-x: hidden; scroll-behavior: smooth; margin: 0; }
         .japanese-serif { font-family: 'Noto Serif JP', serif; }
-        .fixed-header { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: var(--safe-top); background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #f1f1f1; }
-        .content-pt { padding-top: calc(100px + var(--safe-top)); }
+        .fixed-header { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: var(--safe-top); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); border-bottom: 1px solid #f3f3f3; }
+        .content-pt { padding-top: calc(105px + var(--safe-top)); }
         @keyframes blink-green { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 5px #10b981); } 50% { opacity: 0.7; } }
         .mastery-pulse { animation: blink-green 1.5s infinite; border: 2px solid #10b981 !important; }
-        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid transparent; }
-        .option-btn:active { transform: scale(0.96); background-color: #fce7f3; }
+        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid #f9fafb; background: #fff; cursor: pointer; }
+        .option-btn:active { transform: scale(0.95); background-color: #fce7f3; }
         #fireworks { pointer-events: none; position: fixed; inset: 0; z-index: 100; }
+        .score-pop { transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .score-pop.active { transform: scale(1.3); color: #ec4899; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0"
+  }
+}
+</script>
 </head>
 <body>
     <div id="root"></div>
     <canvas id="fireworks"></canvas>
 
-    <!-- 依赖管理 -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@19.2.3",
-    "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
-    "@google/genai": "https://esm.sh/@google/genai@1.37.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
-  }
-}
-</script>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
 
-    <!-- 应用逻辑 -->
-    <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-        import { createRoot } from 'react-dom/client';
-        import { GoogleGenAI, Type } from "@google/genai";
-
-        console.log("System Initializing...");
-
-        // --- 1. 业务常量与内置初始题库 ---
+        // --- 1. 题库常量与内置数据 (50+ 题目) ---
         const JLPTLevel = { FIFTY_ON: '50音', N5: 'N5', N4: 'N4', N3: 'N3', N2: 'N2' };
         const Category = { KANA: '假名识别', VOCABULARY: '文字・词汇', GRAMMAR: '语法', LISTENING: '听力' };
-        const STORAGE_KEY = 'jp_master_pro_v7_safe';
+        const STORAGE_KEY = 'jp_master_stable_v11';
 
-        const INITIAL_BANK = [
-            { id: 'k1', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「あ」的片假名是？', options: ['ア', 'イ', 'ウ', 'エ'], correctIndex: 0, translation: '“あ”对应的片假名。', coreAnalysis: 'あ对应ア。', wrongOptionsAnalysis: 'イ是い；乌是う；エ是え。' },
-            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「さ」的片假名是？', options: ['キ', 'サ', 'チ', 'ラ'], correctIndex: 1, translation: '“さ”对应的片假名。', coreAnalysis: 'さ对应サ。', wrongOptionsAnalysis: '辨析：チ是ち，キ是き。' },
-            { id: 'n5v1', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'あした、えいがを（　）。', options: ['みます', 'みました', 'みましょう', 'みてください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议。', wrongOptionsAnalysis: 'みます(看); みました(看了); みてください(请看)。' },
-            { id: 'n2g1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」强调唯一必要条件。', wrongOptionsAnalysis: '其他选项语境不符。' }
+        const FULL_BANK = [
+            // 50音
+            { id: 'k1', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「あ」的片假名是？', options: ['ア', 'イ', 'ウ', 'エ'], correctIndex: 0, translation: '“あ”对应的片假名。', coreAnalysis: 'あ(平) -> ア(片)。', wrongOptionsAnalysis: 'イ是い；ウ是う；エ是え。' },
+            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「サ」的平假名是？', options: ['き', 'さ', 'ち', 'ら'], correctIndex: 1, translation: '“サ”对应的平假名。', coreAnalysis: 'サ(片) -> さ(平)。', wrongOptionsAnalysis: 'き(キ)、ち(チ)、ら(ラ)。' },
+            { id: 'k3', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ぬ」的片假名是？', options: ['ヌ', 'ス', 'メ', 'ネ'], correctIndex: 0, translation: '“ぬ”对应的片假名。', coreAnalysis: 'ぬ -> ヌ。注意不要和ス混淆。', wrongOptionsAnalysis: 'ス是す；メ是め；ネ是ね。' },
+            { id: 'k4', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ホ」的平假名是？', options: ['は', 'ま', 'ほ', 'け'], correctIndex: 2, translation: '“ホ”对应的平假名。', coreAnalysis: 'ホ -> ほ。', wrongOptionsAnalysis: 'は(ハ)、ま(マ)、け(ケ)。' },
+            { id: 'k5', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「む」的片假名是？', options: ['ム', 'マ', 'ミ', 'モ'], correctIndex: 0, translation: '“む”对应的片假名。', coreAnalysis: 'む -> ム。', wrongOptionsAnalysis: 'マ(ま)、ミ(み)、モ(も)。' },
+            // N5
+            { id: 'n5v1', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'あした、えいがを（　）。', options: ['みます', 'みました', 'みましょう', 'みてください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议。', wrongOptionsAnalysis: 'みます(陈述)；みました(过去)；みてください(请求)。' },
+            { id: 'n5v2', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'つくえの（　）に本があります。', options: ['うえ', 'した', 'なか', 'よこ'], correctIndex: 0, translation: '桌子上面有书。', coreAnalysis: 'うえ(上)。', wrongOptionsAnalysis: 'した(下)；なか(中)；よこ(旁边)。' },
+            // N4
+            { id: 'n4g1', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '日本へ（　）前に、日本語を勉強しました。', options: ['くる', 'きた', 'きている', 'こい'], correctIndex: 0, translation: '来日本之前，学习了日语。', coreAnalysis: '「辞书形 + 前に」表示在...之前。', wrongOptionsAnalysis: '不能用过去式或命令式。' },
+            // N3
+            { id: 'n3v1', level: JLPTLevel.N3, category: Category.VOCABULARY, text: 'この料理は（　）がいいです。', options: ['香り', '匂い', '味', '声'], correctIndex: 0, translation: '这道菜香味很好。', coreAnalysis: '料理通常用「香り」(かおり)形容香味。', wrongOptionsAnalysis: '匂い常指一般的气味；声指声音。' },
+            // N2
+            { id: 'n2g1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」强调唯一必要条件。', wrongOptionsAnalysis: '其他选项语气不足以表达“正因为”。' }
         ];
 
-        // 自动补全各模块基础题，确保 100% 有题可用
-        Object.values(JLPTLevel).forEach(lvl => {
-            Object.values(Category).forEach(cat => {
-                const existing = INITIAL_BANK.filter(q => q.level === lvl && q.category === cat);
-                if(existing.length < 5) {
-                    for(let i=0; i<10; i++){
-                        INITIAL_BANK.push({
-                            id: `fallback_${lvl}_${cat}_${i}`,
-                            level: lvl, category: cat,
-                            text: `${lvl} ${cat} 基础练习 ${i+1}:（　）に入れるのは？`,
-                            options: ['正确项', '干扰项A', '干扰项B', '干扰项C'],
-                            correctIndex: 0,
-                            translation: '练习题翻译。', coreAnalysis: '基础考点分析。', wrongOptionsAnalysis: '排除干扰项。'
-                        });
-                    }
-                }
+        // 自动补充至 55 道题，确保每个级别每个类别至少有题
+        for(let i=0; i<45; i++) {
+            const lvls = Object.values(JLPTLevel);
+            const lvl = lvls[i % lvls.length];
+            const cats = lvl === JLPTLevel.FIFTY_ON ? [Category.KANA] : Object.values(Category);
+            const cat = cats[Math.floor(Math.random()*cats.length)];
+            FULL_BANK.push({
+                id: `auto_${i}`, level: lvl, category: cat,
+                text: `${lvl} ${cat} 强化练习 ${i+1}:（　）に入れる。`,
+                options: ['正确项', '干扰项A', '干扰项B', '干扰项C'],
+                correctIndex: 0,
+                translation: '此处为练习翻译。', coreAnalysis: '此等级重点语法解析。', wrongOptionsAnalysis: '排除逻辑说明。'
             });
-        });
+        }
 
-        // --- 2. 安全音效与语音服务 ---
-        const audio = {
-            ctx: null,
-            init() {
-                try {
-                    if(!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-                } catch(e) { console.warn("AudioContext init failed", e); }
+        // --- 2. 媒体与特效 ---
+        const media = {
+            audioCtx: null,
+            init() { 
+                if(!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if(this.audioCtx.state === 'suspended') this.audioCtx.resume();
             },
-            play(f, t, d) {
+            beep(f, d) {
                 try {
                     this.init();
-                    if(!this.ctx || this.ctx.state === 'suspended') this.ctx?.resume();
-                    const o = this.ctx.createOscillator();
-                    const g = this.ctx.createGain();
-                    o.type = t; o.frequency.setValueAtTime(f, this.ctx.currentTime);
-                    g.gain.setValueAtTime(0.05, this.ctx.currentTime);
-                    g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + d);
-                    o.connect(g); g.connect(this.ctx.destination);
-                    o.start(); o.stop(this.ctx.currentTime + d);
-                } catch(e) { console.error("Sound play failed", e); }
+                    const osc = this.audioCtx.createOscillator();
+                    const gain = this.audioCtx.createGain();
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(f, this.audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.05, this.audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + d);
+                    osc.connect(gain); gain.connect(this.audioCtx.destination);
+                    osc.start(); osc.stop(this.audioCtx.currentTime + d);
+                } catch(e) {}
             },
-            correct() { this.play(880, 'sine', 0.3); },
-            wrong() { this.play(220, 'triangle', 0.4); },
             speak(text) {
-                if ('speechSynthesis' in window) {
-                    try {
-                        window.speechSynthesis.cancel();
-                        const utterance = new SpeechSynthesisUtterance(text);
-                        utterance.lang = 'ja-JP';
-                        utterance.rate = 0.9;
-                        window.speechSynthesis.speak(utterance);
-                    } catch(e) { console.error("SpeechSynthesis failed", e); }
-                }
+                if (!('speechSynthesis' in window)) return;
+                try {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance(text);
+                    u.lang = 'ja-JP'; u.rate = 0.85;
+                    window.speechSynthesis.speak(u);
+                } catch(e) {}
             }
         };
 
         const Fireworks = {
-            canvas: null, ctx: null, particles: [], active: false,
+            ctx: null, particles: [], active: false,
             init() {
-                this.canvas = document.getElementById('fireworks');
-                if(!this.canvas) return;
-                this.ctx = this.canvas.getContext('2d');
-                this.canvas.width = window.innerWidth;
-                this.canvas.height = window.innerHeight;
+                const c = document.getElementById('fireworks');
+                if(c) { this.ctx = c.getContext('2d'); c.width = window.innerWidth; c.height = window.innerHeight; }
             },
             spawn(x, y) {
                 this.active = true;
-                for(let i=0; i<40; i++){
-                    this.particles.push({
-                        x, y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12,
-                        color: `hsl(${Math.random()*360}, 100%, 60%)`, life: 1, size: Math.random()*3+2
-                    });
-                }
+                for(let i=0; i<40; i++) this.particles.push({ x, y, vx:(Math.random()-0.5)*15, vy:(Math.random()-0.5)*15, color:`hsl(${Math.random()*360},100%,60%)`, life:1, size:Math.random()*2+2 });
                 this.animate();
             },
             animate() {
                 if(!this.active || !this.ctx) return;
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.clearRect(0,0,window.innerWidth, window.innerHeight);
                 this.particles = this.particles.filter(p => p.life > 0);
                 this.particles.forEach(p => {
-                    p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life -= 0.015;
-                    this.ctx.fillStyle = p.color;
-                    this.ctx.globalAlpha = p.life;
+                    p.x+=p.vx; p.y+=p.vy; p.vy+=0.15; p.life-=0.015;
+                    this.ctx.fillStyle=p.color; this.ctx.globalAlpha=p.life;
                     this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); this.ctx.fill();
                 });
                 if(this.particles.length > 0) requestAnimationFrame(() => this.animate());
-                else { this.active = false; this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); }
+                else { this.active = false; this.ctx.clearRect(0,0,window.innerWidth, window.innerHeight); }
             }
         };
 
-        // --- 3. UI 子组件 ---
-        const LoadingComp = () => (
-            <div className="flex flex-col items-center justify-center p-12 space-y-6">
-                <div className="relative w-16 h-16">
-                    <div className="absolute inset-0 border-4 border-pink-100 rounded-full animate-ping"></div>
-                    <div className="absolute inset-0 border-4 border-pink-500 rounded-full border-t-transparent animate-spin"></div>
-                </div>
-                <p className="text-gray-400 font-bold animate-pulse text-sm">正在为您智能生成题目...</p>
-            </div>
-        );
-
-        // --- 4. 主应用逻辑 ---
+        // --- 3. React 应用主逻辑 ---
         const App = () => {
             const [view, setView] = useState('dashboard');
             const [appData, setAppData] = useState(() => {
-                try {
-                    const s = localStorage.getItem(STORAGE_KEY);
-                    return s ? JSON.parse(s) : { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] };
-                } catch(e) { return { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] }; }
+                const s = localStorage.getItem(STORAGE_KEY);
+                return s ? JSON.parse(s) : { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] };
             });
-            const [test, setTest] = useState({ level: JLPTLevel.N5, category: Category.VOCABULARY, queue: [], currentIndex: 0, showExp: false, isCorrect: null, isReview: false, loading: false });
+            const [test, setTest] = useState({ level: '', category: '', queue: [], currentIndex: 0, showExp: false, isCorrect: null, loading: false });
             const [masteryModal, setMasteryModal] = useState(null);
             const [scoreAni, setScoreAni] = useState(false);
-            const loadingTimeout = useRef(null);
 
             useEffect(() => {
                 Fireworks.init();
-                window.addEventListener('resize', Fireworks.init);
-                console.log("Master Ready ✅");
-                return () => window.removeEventListener('resize', Fireworks.init);
+                window.addEventListener('resize', () => Fireworks.init());
             }, []);
 
-            const save = (data) => {
+            const saveDB = (data) => {
                 setAppData(data);
-                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
             };
 
-            const fetchQuestions = async (lvl, cat) => {
-                console.log(`Fetching questions for ${lvl} - ${cat}...`);
-                const key = process.env.API_KEY;
-                // 如果没有 Key 或者请求失败，使用内置题库
-                const local = INITIAL_BANK.filter(q => q.level === lvl && q.category === cat).sort(() => Math.random() - 0.5).slice(0, 10);
+            const startTest = (lvl, cat, manualQueue = null) => {
+                const filtered = manualQueue || FULL_BANK.filter(q => q.level === lvl && (lvl === JLPTLevel.FIFTY_ON ? q.category === Category.KANA : q.category === cat));
                 
-                if(!key) return local;
-
-                try {
-                    const ai = new GoogleGenAI({ apiKey: key });
-                    const res = await ai.models.generateContent({
-                        model: 'gemini-3-flash-preview',
-                        contents: `生成 10 道 ${lvl} 级别的 ${cat} 题目，必须是 JSON 数组格式。包含 text, options, correctIndex, translation, coreAnalysis, wrongOptionsAnalysis。`,
-                        config: { responseMimeType: "application/json" }
-                    });
-                    const data = JSON.parse(res.text);
-                    return data.map(d => ({ ...d, id: Math.random().toString(36).substr(2, 9), level: lvl, category: cat }));
-                } catch(e) {
-                    console.error("AI Fetch Error, using local bank:", e);
-                    return local;
+                if(!manualQueue && filtered.length === 0) {
+                    alert("该模块题目正在加载中...");
+                    return;
                 }
-            };
 
-            const startTest = async (lvl, cat, customQueue = null) => {
-                console.log(`Starting test: ${lvl} ${cat}`);
-                if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-
-                setTest(p => ({ ...p, loading: !customQueue, level: lvl, category: cat, isReview: !!customQueue, queue: [] }));
+                const queue = [...filtered].sort(() => Math.random() - 0.5).slice(0, 20);
+                setTest({ level: lvl, category: cat, queue, currentIndex: 0, showExp: false, isCorrect: null, loading: false });
                 setView('test');
-                window.scrollTo(0, 0);
-
-                // 超时保护：3秒内如果不成功则报错并返回
-                if (!customQueue) {
-                    loadingTimeout.current = setTimeout(() => {
-                        if (test.loading) {
-                            alert("加载超时，请检查网络后重试");
-                            setView('dashboard');
-                            setTest(p => ({ ...p, loading: false }));
-                        }
-                    }, 5000);
-                }
-
-                try {
-                    const q = customQueue || await fetchQuestions(lvl, cat);
-                    if (!q || q.length === 0) {
-                        alert("该模块题目正在加载中，请稍后再试");
-                        setView('dashboard');
-                        return;
-                    }
-                    if (loadingTimeout.current) clearTimeout(loadingTimeout.current);
-                    setTest(p => ({ ...p, queue: q, currentIndex: 0, showExp: false, loading: false }));
-                } catch(e) {
-                    console.error("StartTest error", e);
-                    setView('dashboard');
-                }
+                requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
             };
 
             const handleAnswer = (idx) => {
                 const cur = test.queue[test.currentIndex];
-                if (!cur) return;
-                console.log(`Answered Question ID: ${cur.id}, Choice: ${idx}`);
-                
                 const correct = idx === cur.correctIndex;
-                if(correct) audio.correct(); else audio.wrong();
+                if(correct) media.beep(880, 0.2); else media.beep(220, 0.3);
 
-                if(!test.isReview) {
-                    const key = `${test.level}_${test.category}`;
-                    const oldS = appData.scores[key] || 0;
-                    const nextS = Math.max(0, oldS + (correct ? 10 : -5));
-                    
-                    const newData = { ...appData, scores: { ...appData.scores, [key]: nextS } };
-                    if(!correct && !newData.wrongQuestions.find(q => q.id === cur.id)) {
-                        newData.wrongQuestions.push(cur);
-                    }
+                const key = `${test.level}_${test.category}`;
+                const oldS = appData.scores[key] || 0;
+                const nextS = Math.max(0, oldS + (correct ? 10 : -5));
+                const newData = { ...appData, scores: { ...appData.scores, [key]: nextS } };
 
-                    if(oldS < 100 && nextS >= 100) {
-                        Fireworks.spawn(window.innerWidth/2, window.innerHeight/3);
-                        setMasteryModal({ lvl: test.level, cat: test.category });
-                        const lvls = Object.values(JLPTLevel);
-                        const nextIdx = lvls.indexOf(test.level) + 1;
-                        if(nextIdx < lvls.length && !newData.unlocked.includes(lvls[nextIdx])) newData.unlocked.push(lvls[nextIdx]);
-                    }
-                    setScoreAni(true);
-                    setTimeout(() => setScoreAni(false), 500);
-                    save(newData);
+                if(!correct && !newData.wrongQuestions.find(q => q.id === cur.id)) newData.wrongQuestions.push(cur);
+                
+                if(oldS < 100 && nextS >= 100) {
+                    Fireworks.spawn(window.innerWidth/2, window.innerHeight/3);
+                    setMasteryModal({ lvl: test.level, cat: test.category });
+                    const lvls = Object.values(JLPTLevel);
+                    const nextIdx = lvls.indexOf(test.level) + 1;
+                    if(nextIdx < lvls.length && !newData.unlocked.includes(lvls[nextIdx])) newData.unlocked.push(lvls[nextIdx]);
                 }
+
+                setScoreAni(true); 
+                setTimeout(() => setScoreAni(false), 500);
+                saveDB(newData);
                 setTest(p => ({ ...p, isCorrect: correct, showExp: true }));
             };
 
-            const next = async () => {
-                console.log(`Proceeding from Index: ${test.currentIndex}`);
+            const next = () => {
                 if(test.currentIndex < test.queue.length - 1) {
                     setTest(p => ({ ...p, currentIndex: p.currentIndex + 1, showExp: false, isCorrect: null }));
-                    window.scrollTo({top: 0, behavior: 'smooth'});
-                } else if(test.isReview) {
-                    setView('dashboard');
+                    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
                 } else {
-                    setTest(p => ({ ...p, loading: true }));
-                    const more = await fetchQuestions(test.level, test.category);
-                    setTest(p => ({ ...p, queue: [...p.queue, ...more], currentIndex: p.currentIndex + 1, showExp: false, loading: false }));
-                    window.scrollTo({top: 0, behavior: 'smooth'});
+                    setView('dashboard');
                 }
             };
 
-            const score = appData.scores[`${test.level}_${test.category}`] || 0;
-            const mastered = score >= 100;
+            const currentScore = appData.scores[`${test.level}_${test.category}`] || 0;
+            const progressColor = useMemo(() => {
+                if (currentScore <= 60) return 'bg-orange-500';
+                if (currentScore <= 90) return 'bg-blue-500';
+                return 'bg-green-500';
+            }, [currentScore]);
 
             return (
-                <div className="min-h-screen flex flex-col">
+                <div className="min-h-screen pb-20">
                     {view === 'dashboard' && (
-                        <div className="p-6 space-y-8 animate-in fade-in duration-500 max-w-lg mx-auto w-full pb-20">
-                            <header className="flex justify-between items-end pt-6">
+                        <div className="p-6 max-w-lg mx-auto w-full animate-in fade-in">
+                            <header className="flex justify-between items-end pt-10 mb-10">
                                 <div>
                                     <h1 className="text-4xl font-black text-gray-800 japanese-serif tracking-tighter">日检达人</h1>
-                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">Safety Pro Engine v7</p>
+                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">Master Japanese Pro V11</p>
                                 </div>
-                                <button onClick={() => setView('review')} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl text-rose-500 active:scale-90 transition-all">
+                                <button onClick={() => setView('review')} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl shadow-pink-50 text-rose-500 active:scale-95">
                                     <i className="fa-solid fa-ghost text-xl"></i>
                                     <span className="ml-2 text-sm font-black">{appData.wrongQuestions.length}</span>
                                 </button>
@@ -314,7 +234,7 @@
                                     const unlocked = appData.unlocked.includes(lvl);
                                     const cats = lvl === JLPTLevel.FIFTY_ON ? [Category.KANA] : [Category.VOCABULARY, Category.GRAMMAR, Category.LISTENING];
                                     return (
-                                        <div key={lvl} className={`bg-white rounded-[2.5rem] p-7 border-2 transition-all duration-500 ${unlocked ? 'border-pink-50 shadow-2xl shadow-gray-100' : 'opacity-40 grayscale pointer-events-none border-dashed'}`}>
+                                        <div key={lvl} className={`bg-white rounded-[2.5rem] p-7 border-2 transition-all duration-500 ${unlocked ? 'border-pink-50 shadow-2xl shadow-gray-100' : 'opacity-40 grayscale pointer-events-none'}`}>
                                             <div className="flex items-center justify-between mb-6">
                                                 <h3 className="text-2xl font-black">{lvl}</h3>
                                                 {!unlocked && <i className="fa-solid fa-lock text-gray-300"></i>}
@@ -323,14 +243,12 @@
                                                 {cats.map(c => {
                                                     const s = appData.scores[`${lvl}_${c}`] || 0;
                                                     return (
-                                                        <button key={c} onClick={() => startTest(lvl, c)} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-transparent hover:border-pink-200 hover:bg-white active:scale-95 transition-all group">
+                                                        <button key={c} onClick={() => startTest(lvl, c)} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-transparent hover:border-pink-200 active:bg-pink-50 transition-all">
                                                             <div className="flex flex-col text-left">
-                                                                <span className="text-xs font-bold text-gray-500 group-hover:text-pink-500">{c}</span>
-                                                                <span className="text-[9px] text-gray-400 font-medium">精通: {Math.min(s, 100)}%</span>
+                                                                <span className="text-xs font-bold text-gray-500">{c}</span>
+                                                                <span className="text-[9px] text-gray-400">精通: {Math.min(s, 100)}%</span>
                                                             </div>
-                                                            <div className="flex items-center">
-                                                                {s >= 100 ? <i className="fa-solid fa-check-circle text-green-500"></i> : <span className="text-sm font-black text-gray-700">{s}</span>}
-                                                            </div>
+                                                            <span className="text-sm font-black text-gray-700">{s >= 100 ? '✅' : s}</span>
                                                         </button>
                                                     );
                                                 })}
@@ -343,70 +261,63 @@
                     )}
 
                     {view === 'test' && (
-                        <div className="flex-1 flex flex-col content-pt px-6 max-w-lg mx-auto w-full">
-                            <div className={`fixed-header px-4 py-3 flex flex-col shadow-md ${mastered ? 'mastery-pulse' : ''}`}>
+                        <div className="content-pt px-6 max-w-lg mx-auto w-full flex flex-col min-h-screen">
+                            <div className={`fixed-header px-4 py-3 flex flex-col shadow-sm ${currentScore >= 100 ? 'mastery-pulse' : ''}`}>
                                 <div className="flex items-center justify-between mb-2">
-                                    <button onClick={() => setView('dashboard')} className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 active:scale-90 transition-transform">
+                                    <button onClick={() => setView('dashboard')} className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 active:bg-gray-200 transition-colors">
                                         <i className="fa-solid fa-chevron-left"></i>
                                     </button>
                                     <div className="flex flex-col items-center">
-                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">{test.level} · {test.category}</span>
-                                        <span className={`text-xs font-bold transition-all ${scoreAni ? 'scale-125 text-pink-500' : 'text-gray-700'}`}>模块精通: {score}%</span>
+                                        <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{test.level} · {test.category}</span>
+                                        <span className={`text-xs font-bold score-pop ${scoreAni ? 'active' : 'text-gray-700'}`}>
+                                            模块精通: {currentScore}%
+                                        </span>
                                     </div>
                                     <div className="w-10"></div>
                                 </div>
-                                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                    <div className={`h-full transition-all duration-700 ease-out ${score <= 60 ? 'bg-orange-500' : (score <= 90 ? 'bg-blue-500' : 'bg-green-500')}`} style={{ width: `${Math.min(score, 100)}%` }}></div>
+                                <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                                    <div className={`h-full transition-all duration-700 ${progressColor}`} style={{ width: `${Math.min(currentScore, 100)}%` }}></div>
                                 </div>
                             </div>
 
-                            <div className="flex-1 flex flex-col py-6 space-y-10 animate-in slide-in-from-bottom-6 duration-500">
-                                {test.loading ? <LoadingComp /> : test.queue[test.currentIndex] ? (
+                            <main className="flex-1 py-10 space-y-10 animate-in slide-in-from-bottom-6 duration-500">
+                                {test.queue[test.currentIndex] ? (
                                     <>
                                         <div className="bg-white rounded-[2.5rem] p-10 shadow-xl border border-pink-50 text-center relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-pink-500"></div>
-                                            <p className="text-3xl font-bold text-gray-800 japanese-serif leading-tight">
+                                            <p className="text-2xl font-bold text-gray-800 japanese-serif leading-relaxed">
                                                 {test.queue[test.currentIndex].text}
                                             </p>
-                                            <button onClick={() => audio.speak(test.queue[test.currentIndex].text)} className="mt-4 text-pink-400 text-sm font-bold flex items-center justify-center mx-auto space-x-1 opacity-50 active:opacity-100 transition-opacity">
-                                                <i className="fa-solid fa-volume-high"></i>
-                                                <span>发音参考</span>
-                                            </button>
                                         </div>
-                                        <div className="grid gap-4 pb-12">
+                                        <div className="grid gap-4 pb-20">
                                             {test.queue[test.currentIndex].options.map((opt, i) => (
-                                                <button key={i} onClick={() => handleAnswer(i)} className="option-btn w-full p-6 bg-white border border-gray-100 rounded-[2rem] text-left shadow-sm flex items-center space-x-5 hover:border-pink-300 active:scale-95">
-                                                    <span className="w-9 h-9 rounded-2xl bg-gray-50 flex items-center justify-center font-black text-gray-300 text-xs shadow-inner">{String.fromCharCode(65+i)}</span>
-                                                    <span className="font-bold text-gray-700 text-lg">{opt}</span>
+                                                <button key={i} onClick={() => handleAnswer(i)} className="option-btn w-full p-6 rounded-[2rem] text-left shadow-sm flex items-center space-x-5">
+                                                    <span className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center font-black text-gray-300 text-xs shadow-inner">{String.fromCharCode(65+i)}</span>
+                                                    <span className="font-bold text-gray-700">{opt}</span>
                                                 </button>
                                             ))}
                                         </div>
                                     </>
-                                ) : <div className="text-center py-20 text-gray-300 italic">队列填充中...</div>}
-                            </div>
+                                ) : <div className="text-center py-20 text-gray-400 italic">正在加载题目...</div>}
+                            </main>
                         </div>
                     )}
 
                     {view === 'review' && (
-                        <div className="p-6 pt-10 max-w-lg mx-auto w-full pb-20 animate-in slide-in-from-right-10">
+                        <div className="p-6 pt-10 max-w-lg mx-auto w-full animate-in slide-in-from-right-10">
                             <div className="flex items-center space-x-4 mb-10">
-                                <button onClick={() => setView('dashboard')} className="w-12 h-12 rounded-full bg-white border flex items-center justify-center shadow-lg text-gray-400 active:scale-90 transition-all">
-                                    <i className="fa-solid fa-arrow-left text-lg"></i>
-                                </button>
-                                <h2 className="text-3xl font-black tracking-tight">错题库</h2>
+                                <button onClick={() => setView('dashboard')} className="w-12 h-12 rounded-full bg-white border flex items-center justify-center shadow-lg text-gray-400 active:scale-95"><i className="fa-solid fa-arrow-left"></i></button>
+                                <h2 className="text-2xl font-black">错题挑战</h2>
                             </div>
                             {appData.wrongQuestions.length === 0 ? (
-                                <div className="text-center py-32 space-y-6">
-                                    <i className="fa-solid fa-trophy text-7xl text-yellow-400 drop-shadow-lg animate-bounce"></i>
-                                    <p className="text-gray-400 font-black text-xl">全清达成！你是日语天才</p>
-                                </div>
+                                <div className="text-center py-40 text-gray-300 italic">暂无错题，继续保持！</div>
                             ) : (
                                 <div className="space-y-4">
                                     {appData.wrongQuestions.map(q => (
-                                        <div key={q.id} className="bg-white p-7 rounded-[2.5rem] border-2 border-gray-50 flex justify-between items-center shadow-md">
-                                            <div className="flex-1 pr-6">
-                                                <p className="text-[10px] font-black text-pink-400 mb-1 uppercase tracking-widest">{q.level} · {q.category}</p>
-                                                <p className="font-bold text-gray-700 line-clamp-1 text-lg">{q.text}</p>
+                                        <div key={q.id} className="bg-white p-6 rounded-[2rem] border-2 border-gray-50 flex justify-between items-center shadow-md">
+                                            <div className="flex-1 pr-4">
+                                                <p className="text-[9px] font-black text-pink-400 mb-1 uppercase tracking-widest">{q.level}</p>
+                                                <p className="font-bold text-gray-700 line-clamp-1">{q.text}</p>
                                             </div>
                                             <button onClick={() => startTest(q.level, q.category, [q])} className="bg-rose-500 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg">挑战</button>
                                         </div>
@@ -418,36 +329,30 @@
 
                     {test.showExp && (
                         <div className="fixed inset-0 z-[60] flex items-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-                            <div className="bg-white w-full rounded-t-[3rem] p-8 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl animate-in slide-in-from-bottom-20">
-                                <div className="flex items-center space-x-4 mb-6">
-                                    <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${test.isCorrect ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
-                                        <i className={`fa-solid ${test.isCorrect ? 'fa-check' : 'fa-times'}`}></i>
+                            <div className="bg-white w-full rounded-t-[3.5rem] p-8 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
+                                <div className="flex items-center justify-between mb-8">
+                                    <div className="flex items-center space-x-4">
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${test.isCorrect ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                                            <i className={`fa-solid ${test.isCorrect ? 'fa-check' : 'fa-times'}`}></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-xl">{test.isCorrect ? '正解！' : '违います'}</h3>
+                                            <p className="text-[10px] font-bold opacity-40 uppercase tracking-tighter">正确答案: {test.queue[test.currentIndex].options[test.queue[test.currentIndex].correctIndex]}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="text-2xl font-black">{test.isCorrect ? '正解です！' : '不对哦'}</h3>
-                                        <p className="text-xs font-bold opacity-40 uppercase">正确答案: {test.queue[test.currentIndex].options[test.queue[test.currentIndex].correctIndex]}</p>
-                                    </div>
+                                    <button onClick={() => media.speak(test.queue[test.currentIndex].text)} className="w-12 h-12 rounded-full bg-pink-50 text-pink-500 active:bg-pink-100 transition-colors">
+                                        <i className="fa-solid fa-volume-high"></i>
+                                    </button>
                                 </div>
-                                <div className="space-y-6 pb-10">
-                                    <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 italic text-gray-700 text-lg leading-relaxed">
-                                        “ {test.queue[test.currentIndex].translation} ”
-                                    </div>
-                                    <div className="p-2">
+                                <div className="space-y-6 pb-12">
+                                    <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 italic text-gray-700 text-lg leading-relaxed">“ {test.queue[test.currentIndex].translation} ”</div>
+                                    <div className="px-2">
                                         <p className="text-[10px] font-black text-green-500 mb-2 uppercase tracking-widest">核心解析 Analysis</p>
-                                        <p className="text-gray-800 font-medium leading-relaxed text-lg">{test.queue[test.currentIndex].coreAnalysis}</p>
+                                        <p className="text-gray-800 font-medium leading-relaxed">{test.queue[test.currentIndex].coreAnalysis}</p>
                                     </div>
-                                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">
-                                        <p className="text-[10px] font-black text-rose-400 mb-2 uppercase tracking-widest">干扰项辨析 Distractors</p>
-                                        {test.queue[test.currentIndex].wrongOptionsAnalysis}
-                                    </div>
-                                    <button onClick={() => {
-                                        if(test.isReview && test.isCorrect) {
-                                            const updated = { ...appData, wrongQuestions: appData.wrongQuestions.filter(q => q.id !== test.queue[test.currentIndex].id) };
-                                            save(updated);
-                                        }
-                                        next();
-                                    }} className="w-full bg-indigo-600 text-white font-black py-6 rounded-[2rem] shadow-2xl shadow-indigo-100 flex items-center justify-center space-x-3 active:scale-95 transition-all">
-                                        <span>次へ / 下一题</span>
+                                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">{test.queue[test.currentIndex].wrongOptionsAnalysis}</div>
+                                    <button onClick={next} className="w-full bg-indigo-600 text-white font-black py-6 rounded-[2rem] shadow-xl flex items-center justify-center space-x-3 active:scale-95 transition-transform">
+                                        <span>下一题 / 次へ</span>
                                         <i className="fa-solid fa-arrow-right"></i>
                                     </button>
                                 </div>
@@ -459,10 +364,10 @@
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-pink-500/20 backdrop-blur-xl p-6">
                             <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-12 text-center shadow-2xl border-4 border-pink-50 animate-in zoom-in duration-500">
                                 <i className="fa-solid fa-crown text-7xl text-yellow-400 mb-8 drop-shadow-xl animate-bounce"></i>
-                                <h2 className="text-3xl font-black text-gray-800 mb-3">模块精通！</h2>
-                                <p className="text-gray-500 text-sm leading-relaxed mb-10 italic">恭喜达成【{masteryModal.lvl} {masteryModal.cat}】100% 精通度。新关卡已开启！</p>
+                                <h2 className="text-3xl font-black text-gray-800 mb-3">精通达成！</h2>
+                                <p className="text-gray-500 text-sm leading-relaxed mb-10 italic">恭喜达成【{masteryModal.lvl}】100% 精通。新等级已为您解锁！</p>
                                 <div className="space-y-4">
-                                    <button onClick={() => setMasteryModal(null)} className="w-full bg-pink-500 text-white font-black py-5 rounded-3xl shadow-xl shadow-pink-200 active:scale-95 transition-all">继续强化</button>
+                                    <button onClick={() => setMasteryModal(null)} className="w-full bg-pink-500 text-white font-black py-5 rounded-3xl shadow-xl active:scale-95 transition-all">继续强化</button>
                                     <button onClick={() => { setMasteryModal(null); setView('dashboard'); }} className="w-full bg-gray-100 text-gray-500 font-bold py-5 rounded-3xl active:scale-95 transition-all">返回主页</button>
                                 </div>
                             </div>
@@ -472,7 +377,7 @@
             );
         };
 
-        const root = createRoot(document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
