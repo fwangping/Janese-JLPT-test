@@ -1,0 +1,7 @@
+{
+  "name": "日检达人 (Japanese Test Pro)",
+  "description": "一个功能齐全的日语学习与测试平台，涵盖从50音到JLPT N2的全部内容。支持单词、语法、听力测试，并由 AI 实时生成深度解析。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

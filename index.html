@@ -1,0 +1,41 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>日检达人 - Master Japanese Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@600&display=swap');
+        :root { --sakura: #ff6b9d; --safe-top: env(safe-area-inset-top); }
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #fffafb; -webkit-tap-highlight-color: transparent; overflow-x: hidden; scroll-behavior: smooth; }
+        .japanese-serif { font-family: 'Noto Serif JP', serif; }
+        .fixed-header { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: var(--safe-top); background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #f1f1f1; }
+        .content-pt { padding-top: calc(90px + var(--safe-top)); }
+        @keyframes blink-green { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 5px #10b981); } 50% { opacity: 0.7; } }
+        .mastery-pulse { animation: blink-green 1.5s infinite; border: 2px solid #10b981 !important; }
+        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid transparent; }
+        .option-btn:active { transform: scale(0.96); background-color: #fce7f3; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        #fireworks { pointer-events: none; position: fixed; inset: 0; z-index: 100; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <canvas id="fireworks"></canvas>
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.37.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+    <script type="module" src="index.tsx"></script>
+</body>
+</html>
