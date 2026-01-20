@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>日检达人 - Master Japanese Pro</title>
-    <!-- 传统 CDN 依赖 -->
+    <!-- 极速稳健 UMD CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,26 +13,25 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@600&display=swap');
-        :root { --sakura: #ff6b9d; --safe-top: env(safe-area-inset-top); }
-        body { font-family: 'Noto Sans JP', sans-serif; background-color: #fffafb; -webkit-tap-highlight-color: transparent; overflow-x: hidden; scroll-behavior: smooth; margin: 0; }
+        :root { --safe-top: env(safe-area-inset-top); }
+        body { font-family: 'Noto Sans JP', sans-serif; background-color: #fffafb; -webkit-tap-highlight-color: transparent; margin: 0; }
         .japanese-serif { font-family: 'Noto Serif JP', serif; }
-        .fixed-header { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: var(--safe-top); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); border-bottom: 1px solid #f3f3f3; }
+        .fixed-header { position: fixed; top: 0; left: 0; right: 0; z-index: 40; padding-top: var(--safe-top); background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); border-bottom: 1px solid #f1f1f1; }
         .content-pt { padding-top: calc(105px + var(--safe-top)); }
-        @keyframes blink-green { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 5px #10b981); } 50% { opacity: 0.7; } }
-        .mastery-pulse { animation: blink-green 1.5s infinite; border: 2px solid #10b981 !important; }
-        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid #f9fafb; background: #fff; cursor: pointer; }
-        .option-btn:active { transform: scale(0.95); background-color: #fce7f3; }
+        .option-btn { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; border: 2px solid #f9fafb; position: relative; overflow: hidden; }
+        .option-btn:active { transform: scale(0.95); background-color: #fdf2f8; border-color: #fbcfe8; }
         #fireworks { pointer-events: none; position: fixed; inset: 0; z-index: 100; }
-        .score-pop { transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .score-pop.active { transform: scale(1.3); color: #ec4899; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .score-ani { transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .score-ani.active { transform: scale(1.3); color: #ec4899; }
+        .progress-bar { transition: width 0.6s ease, background-color 0.6s ease; }
     </style>
 <script type="importmap">
 {
   "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
     "react": "https://esm.sh/react@^19.2.3",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
@@ -44,45 +43,89 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- 1. 题库常量与内置数据 (50+ 题目) ---
+        // --- 1. 真实题库数据 (65 道真实题目) ---
         const JLPTLevel = { FIFTY_ON: '50音', N5: 'N5', N4: 'N4', N3: 'N3', N2: 'N2' };
-        const Category = { KANA: '假名识别', VOCABULARY: '文字・词汇', GRAMMAR: '语法', LISTENING: '听力' };
-        const STORAGE_KEY = 'jp_master_stable_v11';
+        const Category = { KANA: '假名认读', VOCABULARY: '文字・词汇', GRAMMAR: '语法' };
+        const STORAGE_KEY = 'jp_master_v14_pro';
 
-        const FULL_BANK = [
-            // 50音
+        const REAL_QUESTION_BANK = [
+            // 50音 (20题)
             { id: 'k1', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「あ」的片假名是？', options: ['ア', 'イ', 'ウ', 'エ'], correctIndex: 0, translation: '“あ”对应的片假名。', coreAnalysis: 'あ(平) -> ア(片)。', wrongOptionsAnalysis: 'イ是い；ウ是う；エ是え。' },
-            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「サ」的平假名是？', options: ['き', 'さ', 'ち', 'ら'], correctIndex: 1, translation: '“サ”对应的平假名。', coreAnalysis: 'サ(片) -> さ(平)。', wrongOptionsAnalysis: 'き(キ)、ち(チ)、ら(ラ)。' },
-            { id: 'k3', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ぬ」的片假名是？', options: ['ヌ', 'ス', 'メ', 'ネ'], correctIndex: 0, translation: '“ぬ”对应的片假名。', coreAnalysis: 'ぬ -> ヌ。注意不要和ス混淆。', wrongOptionsAnalysis: 'ス是す；メ是め；ネ是ね。' },
-            { id: 'k4', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ホ」的平假名是？', options: ['は', 'ま', 'ほ', 'け'], correctIndex: 2, translation: '“ホ”对应的平假名。', coreAnalysis: 'ホ -> ほ。', wrongOptionsAnalysis: 'は(ハ)、ま(マ)、け(ケ)。' },
-            { id: 'k5', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「む」的片假名是？', options: ['ム', 'マ', 'ミ', 'モ'], correctIndex: 0, translation: '“む”对应的片假名。', coreAnalysis: 'む -> ム。', wrongOptionsAnalysis: 'マ(ま)、ミ(み)、モ(も)。' },
-            // N5
-            { id: 'n5v1', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'あした、えいがを（　）。', options: ['みます', 'みました', 'みましょう', 'みてください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议。', wrongOptionsAnalysis: 'みます(陈述)；みました(过去)；みてください(请求)。' },
-            { id: 'n5v2', level: JLPTLevel.N5, category: Category.VOCABULARY, text: 'つくえの（　）に本があります。', options: ['うえ', 'した', 'なか', 'よこ'], correctIndex: 0, translation: '桌子上面有书。', coreAnalysis: 'うえ(上)。', wrongOptionsAnalysis: 'した(下)；なか(中)；よこ(旁边)。' },
-            // N4
-            { id: 'n4g1', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '日本へ（　）前に、日本語を勉強しました。', options: ['くる', 'きた', 'きている', 'こい'], correctIndex: 0, translation: '来日本之前，学习了日语。', coreAnalysis: '「辞书形 + 前に」表示在...之前。', wrongOptionsAnalysis: '不能用过去式或命令式。' },
-            // N3
-            { id: 'n3v1', level: JLPTLevel.N3, category: Category.VOCABULARY, text: 'この料理は（　）がいいです。', options: ['香り', '匂い', '味', '声'], correctIndex: 0, translation: '这道菜香味很好。', coreAnalysis: '料理通常用「香り」(かおり)形容香味。', wrongOptionsAnalysis: '匂い常指一般的气味；声指声音。' },
-            // N2
-            { id: 'n2g1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」强调唯一必要条件。', wrongOptionsAnalysis: '其他选项语气不足以表达“正因为”。' }
+            { id: 'k2', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「カ」的平假名是？', options: ['き', 'か', 'く', 'け'], correctIndex: 1, translation: '“カ”对应的平假名。', coreAnalysis: 'カ(片) -> か(平)。', wrongOptionsAnalysis: 'き(キ)；く(ク)；け(ケ)。' },
+            { id: 'k3', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ぬ」的片假名是？', options: ['ヌ', 'ス', 'メ', 'ネ'], correctIndex: 0, translation: '“ぬ”对应的片假名。', coreAnalysis: 'ぬ(平) -> ヌ(片)。', wrongOptionsAnalysis: 'ス(す)；メ(め)；ネ(ね)。' },
+            { id: 'k4', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「シ」的平假名是？', options: ['し', 'つ', 'そ', 'ん'], correctIndex: 0, translation: '“シ”对应的平假名。', coreAnalysis: 'シ(片) -> し(平)。', wrongOptionsAnalysis: '注意区分“ツ(つ)”。' },
+            { id: 'k5', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ほ」的片假名是？', options: ['ハ', 'ホ', 'マ', 'ム'], correctIndex: 1, translation: '“ほ”对应的片假名。', coreAnalysis: 'ほ(平) -> ホ(片)。', wrongOptionsAnalysis: 'ハ是は；マ是ま。' },
+            { id: 'k6', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ね」的片假名是？', options: ['ネ', 'ヌ', 'れ', 'め'], correctIndex: 0, translation: '“ね”对应的片假名。', coreAnalysis: 'ね -> ネ。', wrongOptionsAnalysis: 'ヌ(ぬ)；れ是平假名。' },
+            { id: 'k7', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ユ」的平假名是？', options: ['や', 'ゆ', 'よ', 'る'], correctIndex: 1, translation: '“ユ”对应的平假名。', coreAnalysis: 'ユ(片) -> ゆ(平)。', wrongOptionsAnalysis: 'や(ヤ)；よ(ヨ)。' },
+            { id: 'k8', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「を」的片假名是？', options: ['オ', 'ヲ', 'ロ', 'ワ'], correctIndex: 1, translation: '“を”对应的片假名。', coreAnalysis: 'を -> ヲ。', wrongOptionsAnalysis: 'オ(お)；ロ(ろ)。' },
+            { id: 'k9', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「サ」的平假名是？', options: ['き', 'さ', 'ち', 'ら'], correctIndex: 1, translation: '“サ”对应的平假名。', coreAnalysis: 'サ -> さ。', wrongOptionsAnalysis: 'ち(チ)；ら(拉)。' },
+            { id: 'k10', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ふ」的片假名是？', options: ['フ', 'ヌ', 'ス', 'ラ'], correctIndex: 0, translation: '“ふ”对应的片假名。', coreAnalysis: 'ふ -> フ。', wrongOptionsAnalysis: 'ヌ是“ぬ”。' },
+            { id: 'k11', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「み」的片假名是？', options: ['マ', 'ミ', 'ム', 'メ'], correctIndex: 1, translation: '“み”对应的片假名。', coreAnalysis: 'み -> ミ。', wrongOptionsAnalysis: 'マ(ま)；ム(む)。' },
+            { id: 'k12', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ロ」的平假名是？', options: ['ろ', 'る', 'ら', 'り'], correctIndex: 0, translation: '“ロ”对应的平假名。', coreAnalysis: '罗音对应的假名。', wrongOptionsAnalysis: 'る(ル)；ら(拉)。' },
+            { id: 'k13', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「な」的片假名是？', options: ['ナ', '二', 'ヌ', 'ネ'], correctIndex: 0, translation: '“な”对应的片假名。', coreAnalysis: 'な -> ナ。', wrongOptionsAnalysis: '二是“に”。' },
+            { id: 'k14', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ソ」的平假名是？', options: ['そ', 'ん', 'し', 'つ'], correctIndex: 0, translation: '“ソ”对应的平假名。', coreAnalysis: '注意笔画从上往下。', wrongOptionsAnalysis: 'ん(ン)；し(シ)。' },
+            { id: 'k15', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「む」的片假名是？', options: ['ム', 'マ', 'モ', 'メ'], correctIndex: 0, translation: '“む”对应的片假名。', coreAnalysis: 'む -> ム。', wrongOptionsAnalysis: 'マ(ま)；モ(も)。' },
+            { id: 'k16', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ケ」的平假名是？', options: ['け', 'く', 'た', 'は'], correctIndex: 0, translation: '“ケ”对应的平假名。', coreAnalysis: 'ケ -> け。', wrongOptionsAnalysis: 'く(ク)；た(タ)。' },
+            { id: 'k17', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「り」的片假名是？', options: ['リ', 'レ', 'ル', 'ラ'], correctIndex: 0, translation: '“り”对应的片假名。', coreAnalysis: 'り -> リ。', wrongOptionsAnalysis: 'レ是“れ”。' },
+            { id: 'k18', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「テ」的平假名是？', options: ['て', 'と', 'た', 'ち'], correctIndex: 0, translation: '“テ”对应的平假名。', coreAnalysis: 'テ -> て。', wrongOptionsAnalysis: 'と(ト)；た(タ)。' },
+            { id: 'k19', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「こ」的片假名是？', options: ['コ', 'ユ', 'ニ', '工'], correctIndex: 0, translation: '“こ”对应的片假名。', coreAnalysis: 'こ -> コ。', wrongOptionsAnalysis: '工是“え”。' },
+            { id: 'k20', level: JLPTLevel.FIFTY_ON, category: Category.KANA, text: '「ハ」的平假名是？', options: ['は', 'ほ', 'ま', 'け'], correctIndex: 0, translation: '“ハ”对应的平假名。', coreAnalysis: 'ハ -> は。', wrongOptionsAnalysis: 'ほ(ホ)。' },
+
+            // N5 (15题)
+            { id: 'n5_1', level: JLPTLevel.N5, category: Category.GRAMMAR, text: 'あした、いっしょに映画を（　）。', options: ['見ます', '見ました', '见ましょう', '見てください'], correctIndex: 2, translation: '明天一起去看电影吧。', coreAnalysis: '「～ましょう」表示提议、邀请。', wrongOptionsAnalysis: '见ます(陈述)；见ました(过去)。' },
+            { id: 'n5_2', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '田中さんは（　）が長いです。', options: ['足', '手', '背', '耳'], correctIndex: 0, translation: '田中先生腿很长。', coreAnalysis: '「足(あし)」指腿。', wrongOptionsAnalysis: '背(身高)；耳(耳朵)。' },
+            { id: 'n5_3', level: JLPTLevel.N5, category: Category.GRAMMAR, text: 'あそこに犬（　）います。', options: ['が', 'は', 'を', 'に'], correctIndex: 0, translation: '那里有一只狗。', coreAnalysis: '表示存在的主体用“が”。', wrongOptionsAnalysis: '“を”接动作对象。' },
+            { id: 'n5_4', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '昨日、どこ（　）行きませんでした。', options: ['も', 'へ', 'に', 'を'], correctIndex: 0, translation: '昨天哪儿也没去。', coreAnalysis: '疑问词+も+否定。', wrongOptionsAnalysis: '“へ”表示方向。' },
+            { id: 'n5_5', level: JLPTLevel.N5, category: Category.GRAMMAR, text: 'テニス（　）好きです。', options: ['は', 'を', 'が', 'に'], correctIndex: 2, translation: '喜欢网球。', coreAnalysis: '「～が好きです」固定搭配。', wrongOptionsAnalysis: '“を”通常不接喜欢。' },
+            { id: 'n5_6', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '「今日」的读音是？', options: ['きょう', 'きのう', 'あした', 'あさって'], correctIndex: 0, translation: '“今日”的读音。', coreAnalysis: '今日(きょう)。', wrongOptionsAnalysis: 'きのう(昨天)。' },
+            { id: 'n5_7', level: JLPTLevel.N5, category: Category.GRAMMAR, text: 'コーヒー（　）飲みます。', options: ['が', 'を', 'に', 'で'], correctIndex: 1, translation: '喝咖啡。', coreAnalysis: '动作的对象用“を”。', wrongOptionsAnalysis: '“が”表示状态。' },
+            { id: 'n5_8', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '「学生」的读音是？', options: ['がくせい', 'せんせい', 'いしゃ', 'かいしゃいん'], correctIndex: 0, translation: '“学生”的读音。', coreAnalysis: '学生(がくせい)。', wrongOptionsAnalysis: 'せんせい(老师)。' },
+            { id: 'n5_9', level: JLPTLevel.N5, category: Category.GRAMMAR, text: '部屋（　）猫がいます。', options: ['に', 'を', 'で', 'から'], correctIndex: 0, translation: '房间里有猫。', coreAnalysis: '存在场所用“に”。', wrongOptionsAnalysis: '“で”指动作发生地。' },
+            { id: 'n5_10', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '「卵」的读音是？', options: ['たまご', 'さかな', 'にく', 'やさい'], correctIndex: 0, translation: '“卵”的读音。', coreAnalysis: '卵(たまご)。', wrongOptionsAnalysis: 'さかな(鱼)。' },
+            { id: 'n5_11', level: JLPTLevel.N5, category: Category.GRAMMAR, text: '私は毎日、七時（　）起きます。', options: ['に', 'を', 'で', 'が'], correctIndex: 0, translation: '我每天七点起床。', coreAnalysis: '具体时间点用“に”。', wrongOptionsAnalysis: '“で”不能接时间点。' },
+            { id: 'n5_12', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '「日本語」的读音是？', options: ['にほんご', 'ちゅうごくご', 'えいご', 'ふらんすご'], correctIndex: 0, translation: '“日语”的读音。', coreAnalysis: '日本语(にほんご)。', wrongOptionsAnalysis: 'えいご(英语)。' },
+            { id: 'n5_13', level: JLPTLevel.N5, category: Category.GRAMMAR, text: 'そのペン（　）貸してください。', options: ['を', 'が', 'に', 'で'], correctIndex: 0, translation: '请把那支笔借给我。', coreAnalysis: '动作对象“を”。', wrongOptionsAnalysis: '“に”表示对象。' },
+            { id: 'n5_14', level: JLPTLevel.N5, category: Category.VOCABULARY, text: '「学校」的读音是？', options: ['がっこう', 'びょういん', 'ぎんこう', 'えき'], correctIndex: 0, translation: '“学校”的读音。', coreAnalysis: '学校(がっこう)。', wrongOptionsAnalysis: 'びょういん(医院)。' },
+            { id: 'n5_15', level: JLPTLevel.N5, category: Category.GRAMMAR, text: '日本（　）行きたいです。', options: ['へ', 'を', 'が', 'で'], correctIndex: 0, translation: '想去日本。', coreAnalysis: '方向助词“へ”。', wrongOptionsAnalysis: '“を”接他动词。' },
+
+            // N4 (10题)
+            { id: 'n4_1', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '日本へ（　）前に、勉強しました。', options: ['来る', '来た', '来ている', '来れば'], correctIndex: 0, translation: '来日本之前学习了。', coreAnalysis: '「辞书形 + 前に」。', wrongOptionsAnalysis: '不能用过去式“来た”。' },
+            { id: 'n4_2', level: JLPTLevel.N4, category: Category.VOCABULARY, text: '試験が（　）ので、安心しました。', options: ['おわった', 'はじまった', 'つづいた', 'おくれた'], correctIndex: 0, translation: '考试结束了，所以放心了。', coreAnalysis: 'おわる(结束)。', wrongOptionsAnalysis: 'はじまる(开始)。' },
+            { id: 'n4_3', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '雨が（　）そうです。', options: ['ふり', 'ふる', 'ふって', 'ふった'], correctIndex: 0, translation: '看起来要下雨。', coreAnalysis: '「ます形去掉ます + そう」。', wrongOptionsAnalysis: 'ふるそう意为听说。' },
+            { id: 'n4_4', level: JLPTLevel.N4, category: Category.VOCABULARY, text: '外は（　）ので、上着を着てください。', options: ['さむい', 'あつい', 'くらい', 'あかるい'], correctIndex: 0, translation: '外面很冷请穿衣服。', coreAnalysis: '寒冷(さむい)。', wrongOptionsAnalysis: 'あつい(热)。' },
+            { id: 'n4_5', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '宿題を（　）しまいました。', options: ['わすれて', 'わすれる', 'わすれた', 'わすれ'], correctIndex: 0, translation: '不小心忘了作业。', coreAnalysis: '「て形 + しまう」遗憾、完成。', wrongOptionsAnalysis: '接续不对。' },
+            { id: 'n4_6', level: JLPTLevel.N4, category: Category.VOCABULARY, text: '「案内」的读音是？', options: ['あんない', 'あんねい', 'あんみ', 'あんしん'], correctIndex: 0, translation: '“案内”读音。', coreAnalysis: '案内(あんない)。', wrongOptionsAnalysis: 'あんしん(放心)。' },
+            { id: 'n4_7', level: JLPTLevel.N4, category: Category.GRAMMAR, text: '窓が（　）います。', options: ['あいて', 'あけて', 'あく', 'あき'], correctIndex: 0, translation: '窗户开着。', coreAnalysis: '「自动词て形 + いる」状态。', wrongOptionsAnalysis: 'あけて是他动。' },
+            { id: 'n4_8', level: JLPTLevel.N4, category: Category.VOCABULARY, text: '「将来」的读音是？', options: ['しょうらい', 'しょうねん', 'じょうらい', 'じょうねん'], correctIndex: 0, translation: '“将来”读音。', coreAnalysis: '将来(しょうらい)。', wrongOptionsAnalysis: '注意清浊。' },
+            { id: 'n4_9', level: JLPTLevel.N4, category: Category.GRAMMAR, text: 'もっと勉強（　）ほうがいいですよ。', options: ['した', 'する', 'している', 'しなかった'], correctIndex: 0, translation: '多学习比较好。', coreAnalysis: '「た形 + ほうがいい」。', wrongOptionsAnalysis: '建议通常用过去式。' },
+            { id: 'n4_10', level: JLPTLevel.N4, category: Category.VOCABULARY, text: '「経済」的读音是？', options: ['けいざい', 'けいさい', 'げいざい', 'げいさい'], correctIndex: 0, translation: '“经济”读音。', coreAnalysis: '经济(けいざい)。', wrongOptionsAnalysis: '浊音要注意。' },
+
+            // N3 (10题)
+            { id: 'n3_1', level: JLPTLevel.N3, category: Category.GRAMMAR, text: '雨が（　）うちに、帰りましょう。', options: ['ふらない', 'ふっている', 'ふった', 'ふらなければ'], correctIndex: 0, translation: '趁着还没下雨，回去吧。', coreAnalysis: '「～ないうちに」趁着还没...。', wrongOptionsAnalysis: 'ふっている(正在下)。' },
+            { id: 'n3_2', level: JLPTLevel.N3, category: Category.VOCABULARY, text: 'この料理は（　）がいいです。', options: ['香り', '匂い', '味', '音'], correctIndex: 0, translation: '这道菜香味很好。', coreAnalysis: '料理香味用“香り”。', wrongOptionsAnalysis: '味(味道)。' },
+            { id: 'n3_3', level: JLPTLevel.N3, category: Category.GRAMMAR, text: '彼なら（　）はずです。', options: ['できる', 'できた', 'できない', 'できれば'], correctIndex: 0, translation: '他的话按理说是会的。', coreAnalysis: '「～はず」推测。', wrongOptionsAnalysis: '时态错误。' },
+            { id: 'n3_4', level: JLPTLevel.N3, category: Category.VOCABULARY, text: '（　）に注意してください。', options: ['周囲', '付近', '近所', '近く'], correctIndex: 0, translation: '请注意周围。', coreAnalysis: '周囲(しゅうい)。', wrongOptionsAnalysis: '近所(邻居)。' },
+            { id: 'n3_5', level: JLPTLevel.N3, category: Category.GRAMMAR, text: '合格できるように（　）います。', options: ['祈って', '祈り', '祈る', '祈れば'], correctIndex: 0, translation: '正在祈祷能合格。', coreAnalysis: '「～て＋いる」状态或动作进行。', wrongOptionsAnalysis: '词形不对。' },
+            { id: 'n3_6', level: JLPTLevel.N3, category: Category.VOCABULARY, text: '「期待」的读音是？', options: ['きたい', 'きだい', 'じだい', 'したい'], correctIndex: 0, translation: '“期待”读音。', coreAnalysis: '期待(きたい)。', wrongOptionsAnalysis: 'じだい(时代)。' },
+            { id: 'n3_7', level: JLPTLevel.N3, category: Category.GRAMMAR, text: '忙し（　）で、連絡が遅れました。', options: ['あまり', 'ばかり', 'ところ', 'ながら'], correctIndex: 0, translation: '因为太忙了，联系晚了。', coreAnalysis: '「～あまり」过于。', wrongOptionsAnalysis: '虽然...但是...用ながら。' },
+            { id: 'n3_8', level: JLPTLevel.N3, category: Category.VOCABULARY, text: '「解決」的读音是？', options: ['かいけつ', 'かいけち', 'がいけつ', 'がいけち'], correctIndex: 0, translation: '“解决”读音。', coreAnalysis: '解决(かいけつ)。', wrongOptionsAnalysis: '清音。' },
+            { id: 'n3_9', level: JLPTLevel.N3, category: Category.GRAMMAR, text: '先生に（　）ました。', options: ['褒められ', '褒めさせ', '褒め', '褒められさせ'], correctIndex: 0, translation: '被老师表扬了。', coreAnalysis: '被动语态褒められる。', wrongOptionsAnalysis: '褒めさせ是使役。' },
+            { id: 'n3_10', level: JLPTLevel.N3, category: Category.VOCABULARY, text: '「独特」的读音是？', options: ['どくとく', 'とくとく', 'どくどく', 'とくどく'], correctIndex: 0, translation: '“独特”读音。', coreAnalysis: '独特(どくとく)。', wrongOptionsAnalysis: '注意浊音。' },
+
+            // N2 (10题)
+            { id: 'n2_1', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '合格できたのは、皆さんの応援が（　）のことです。', options: ['あって', 'ありながら', 'あるがゆえ', 'あってこそ'], correctIndex: 3, translation: '之所以能合格，正因为有了大家的支撑。', coreAnalysis: '「～あってこそ」唯一必要条件。', wrongOptionsAnalysis: 'ゆえ表示因果但语气弱。' },
+            { id: 'n2_2', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '知っている（　）、知らないふりをした。', options: ['くせに', 'うちに', 'わりに', 'たびに'], correctIndex: 0, translation: '明明知道，却装作不知道。', coreAnalysis: '「～くせに」表示转折及责难。', wrongOptionsAnalysis: 'わりに(相比之下)。' },
+            { id: 'n2_3', level: JLPTLevel.N2, category: Category.VOCABULARY, text: '「冷静」的读音是？', options: ['れいせい', 'れいぜい', 'らいせい', 'らいぜい'], correctIndex: 0, translation: '“冷静”读音。', coreAnalysis: '冷静(れいせい)。', wrongOptionsAnalysis: '浊音区别。' },
+            { id: 'n2_4', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '雨（　）関係なく、行われる。', options: ['に', 'を', 'は', 'が'], correctIndex: 0, translation: '与下雨无关，照常进行。', coreAnalysis: '「～に関係なく」。', wrongOptionsAnalysis: '固定搭配。' },
+            { id: 'n2_5', level: JLPTLevel.N2, category: Category.VOCABULARY, text: '「豊富」的读音是？', options: ['ほうふ', 'ぼうふ', 'ほうぶ', 'ぼうぶ'], correctIndex: 0, translation: '“丰富”读音。', coreAnalysis: '丰富(ほうふ)。', wrongOptionsAnalysis: '清音。' },
+            { id: 'n2_6', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '彼は毎日（　）ように勉強している。', options: ['狂った', '狂う', '狂っている', '狂わない'], correctIndex: 0, translation: '他每天像疯了一样学习。', coreAnalysis: '「～た + ように」。', wrongOptionsAnalysis: '时态。' },
+            { id: 'n2_7', level: JLPTLevel.N2, category: Category.VOCABULARY, text: '「不況」的读音是？', options: ['ふきょう', 'ふぎょう', 'ふくきょう', 'ふくぎょう'], correctIndex: 0, translation: '“不况（萧条）”读音。', coreAnalysis: '不况(ふきょう)。', wrongOptionsAnalysis: '浊音要注意。' },
+            { id: 'n2_8', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '本当のことを（　）べきだ。', options: ['言う', '言った', '言おう', '言わない'], correctIndex: 0, translation: '应该说出真相。', coreAnalysis: '「辞书形 + べき」。', wrongOptionsAnalysis: '说过了用言った。' },
+            { id: 'n2_9', level: JLPTLevel.N2, category: Category.VOCABULARY, text: '「混乱」的读音是？', options: ['こんらん', 'こんらん', 'ごんらん', 'ごんらん'], correctIndex: 0, translation: '“混乱”读音。', coreAnalysis: '混乱(こんらん)。', wrongOptionsAnalysis: '重复干扰。' },
+            { id: 'n2_10', level: JLPTLevel.N2, category: Category.GRAMMAR, text: '一度決めた（　）、最後までやりぬく。', options: ['以上', 'あまり', 'ばかり', 'ところ'], correctIndex: 0, translation: '既然决定了，就坚持到底。', coreAnalysis: '「～以上(は)」既然。', wrongOptionsAnalysis: '因果逻辑。' }
         ];
 
-        // 自动补充至 55 道题，确保每个级别每个类别至少有题
-        for(let i=0; i<45; i++) {
-            const lvls = Object.values(JLPTLevel);
-            const lvl = lvls[i % lvls.length];
-            const cats = lvl === JLPTLevel.FIFTY_ON ? [Category.KANA] : Object.values(Category);
-            const cat = cats[Math.floor(Math.random()*cats.length)];
-            FULL_BANK.push({
-                id: `auto_${i}`, level: lvl, category: cat,
-                text: `${lvl} ${cat} 强化练习 ${i+1}:（　）に入れる。`,
-                options: ['正确项', '干扰项A', '干扰项B', '干扰项C'],
-                correctIndex: 0,
-                translation: '此处为练习翻译。', coreAnalysis: '此等级重点语法解析。', wrongOptionsAnalysis: '排除逻辑说明。'
-            });
-        }
-
-        // --- 2. 媒体与特效 ---
+        // --- 2. 工具与媒体 ---
         const media = {
             audioCtx: null,
             init() { 
@@ -120,7 +163,7 @@
             },
             spawn(x, y) {
                 this.active = true;
-                for(let i=0; i<40; i++) this.particles.push({ x, y, vx:(Math.random()-0.5)*15, vy:(Math.random()-0.5)*15, color:`hsl(${Math.random()*360},100%,60%)`, life:1, size:Math.random()*2+2 });
+                for(let i=0; i<30; i++) this.particles.push({ x, y, vx:(Math.random()-0.5)*15, vy:(Math.random()-0.5)*15, color:`hsl(${Math.random()*360},100%,60%)`, life:1, size:Math.random()*2+2 });
                 this.animate();
             },
             animate() {
@@ -133,7 +176,6 @@
                     this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); this.ctx.fill();
                 });
                 if(this.particles.length > 0) requestAnimationFrame(() => this.animate());
-                else { this.active = false; this.ctx.clearRect(0,0,window.innerWidth, window.innerHeight); }
             }
         };
 
@@ -144,7 +186,7 @@
                 const s = localStorage.getItem(STORAGE_KEY);
                 return s ? JSON.parse(s) : { scores: {}, wrongQuestions: [], unlocked: [JLPTLevel.FIFTY_ON, JLPTLevel.N5] };
             });
-            const [test, setTest] = useState({ level: '', category: '', queue: [], currentIndex: 0, showExp: false, isCorrect: null, loading: false });
+            const [test, setTest] = useState({ level: '', category: '', queue: [], currentIndex: 0, showExp: false, isCorrect: null });
             const [masteryModal, setMasteryModal] = useState(null);
             const [scoreAni, setScoreAni] = useState(false);
 
@@ -159,17 +201,13 @@
             };
 
             const startTest = (lvl, cat, manualQueue = null) => {
-                const filtered = manualQueue || FULL_BANK.filter(q => q.level === lvl && (lvl === JLPTLevel.FIFTY_ON ? q.category === Category.KANA : q.category === cat));
-                
-                if(!manualQueue && filtered.length === 0) {
-                    alert("该模块题目正在加载中...");
-                    return;
-                }
+                const filtered = manualQueue || REAL_QUESTION_BANK.filter(q => q.level === lvl);
+                if(filtered.length === 0) return;
 
-                const queue = [...filtered].sort(() => Math.random() - 0.5).slice(0, 20);
-                setTest({ level: lvl, category: cat, queue, currentIndex: 0, showExp: false, isCorrect: null, loading: false });
+                const queue = [...filtered].sort(() => Math.random() - 0.5).slice(0, 10);
+                setTest({ level: lvl, category: cat, queue, currentIndex: 0, showExp: false, isCorrect: null });
                 setView('test');
-                requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+                window.scrollTo(0,0);
             };
 
             const handleAnswer = (idx) => {
@@ -199,31 +237,35 @@
             };
 
             const next = () => {
-                if(test.currentIndex < test.queue.length - 1) {
-                    setTest(p => ({ ...p, currentIndex: p.currentIndex + 1, showExp: false, isCorrect: null }));
+                const nextIdx = test.currentIndex + 1;
+                // 彻底解决卡死：如果超过当前 Session 长度，重置状态并自动开启新 Session
+                if(nextIdx < test.queue.length) {
+                    setTest(p => ({ ...p, currentIndex: nextIdx, showExp: false, isCorrect: null }));
                     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
                 } else {
-                    setView('dashboard');
+                    // 无缝循环：强制重置状态，然后 startTest
+                    setTest(p => ({ ...p, showExp: false, isCorrect: null }));
+                    startTest(test.level, test.category);
                 }
             };
 
             const currentScore = appData.scores[`${test.level}_${test.category}`] || 0;
             const progressColor = useMemo(() => {
-                if (currentScore <= 60) return 'bg-orange-500';
-                if (currentScore <= 90) return 'bg-blue-500';
-                return 'bg-green-500';
+                if (currentScore <= 60) return '#f97316'; // 橙
+                if (currentScore <= 90) return '#3b82f6'; // 蓝
+                return '#22c55e'; // 绿
             }, [currentScore]);
 
             return (
-                <div className="min-h-screen pb-20">
+                <div className="min-h-screen">
                     {view === 'dashboard' && (
-                        <div className="p-6 max-w-lg mx-auto w-full animate-in fade-in">
-                            <header className="flex justify-between items-end pt-10 mb-10">
+                        <div className="p-6 max-w-lg mx-auto w-full animate-in fade-in pb-24 text-left">
+                            <header className="flex justify-between items-end pt-8 mb-10">
                                 <div>
                                     <h1 className="text-4xl font-black text-gray-800 japanese-serif tracking-tighter">日检达人</h1>
-                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">Master Japanese Pro V11</p>
+                                    <p className="text-[10px] text-pink-400 font-bold uppercase tracking-widest mt-1">PRO STABLE VERSION</p>
                                 </div>
-                                <button onClick={() => setView('review')} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl shadow-pink-50 text-rose-500 active:scale-95">
+                                <button onClick={() => setView('review')} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-xl text-rose-500 active:scale-95">
                                     <i className="fa-solid fa-ghost text-xl"></i>
                                     <span className="ml-2 text-sm font-black">{appData.wrongQuestions.length}</span>
                                 </button>
@@ -232,18 +274,18 @@
                             <div className="grid gap-6">
                                 {Object.values(JLPTLevel).map(lvl => {
                                     const unlocked = appData.unlocked.includes(lvl);
-                                    const cats = lvl === JLPTLevel.FIFTY_ON ? [Category.KANA] : [Category.VOCABULARY, Category.GRAMMAR, Category.LISTENING];
                                     return (
-                                        <div key={lvl} className={`bg-white rounded-[2.5rem] p-7 border-2 transition-all duration-500 ${unlocked ? 'border-pink-50 shadow-2xl shadow-gray-100' : 'opacity-40 grayscale pointer-events-none'}`}>
+                                        <div key={lvl} className={`bg-white rounded-[2.5rem] p-7 border-2 transition-all duration-500 ${unlocked ? 'border-pink-50 shadow-2xl' : 'opacity-40 grayscale pointer-events-none'}`}>
                                             <div className="flex items-center justify-between mb-6">
                                                 <h3 className="text-2xl font-black">{lvl}</h3>
                                                 {!unlocked && <i className="fa-solid fa-lock text-gray-300"></i>}
                                             </div>
                                             <div className="grid gap-3">
-                                                {cats.map(c => {
+                                                {Object.values(Category).map(c => {
+                                                    if(lvl === JLPTLevel.FIFTY_ON && c !== Category.KANA) return null;
                                                     const s = appData.scores[`${lvl}_${c}`] || 0;
                                                     return (
-                                                        <button key={c} onClick={() => startTest(lvl, c)} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-transparent hover:border-pink-200 active:bg-pink-50 transition-all">
+                                                        <button key={c} onClick={() => startTest(lvl, c)} className="flex justify-between items-center p-5 bg-gray-50/50 rounded-2xl border border-transparent active:bg-pink-50 transition-all">
                                                             <div className="flex flex-col text-left">
                                                                 <span className="text-xs font-bold text-gray-500">{c}</span>
                                                                 <span className="text-[9px] text-gray-400">精通: {Math.min(s, 100)}%</span>
@@ -262,21 +304,17 @@
 
                     {view === 'test' && (
                         <div className="content-pt px-6 max-w-lg mx-auto w-full flex flex-col min-h-screen">
-                            <div className={`fixed-header px-4 py-3 flex flex-col shadow-sm ${currentScore >= 100 ? 'mastery-pulse' : ''}`}>
+                            <div className="fixed-header px-4 py-3 flex flex-col shadow-sm">
                                 <div className="flex items-center justify-between mb-2">
-                                    <button onClick={() => setView('dashboard')} className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 active:bg-gray-200 transition-colors">
-                                        <i className="fa-solid fa-chevron-left"></i>
-                                    </button>
+                                    <button onClick={() => setView('dashboard')} className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-full text-gray-400 active:bg-gray-200"><i className="fa-solid fa-chevron-left"></i></button>
                                     <div className="flex flex-col items-center">
                                         <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{test.level} · {test.category}</span>
-                                        <span className={`text-xs font-bold score-pop ${scoreAni ? 'active' : 'text-gray-700'}`}>
-                                            模块精通: {currentScore}%
-                                        </span>
+                                        <span className={`text-xs font-bold score-ani ${scoreAni ? 'active' : 'text-gray-700'}`}>精通度: {currentScore}%</span>
                                     </div>
                                     <div className="w-10"></div>
                                 </div>
                                 <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
-                                    <div className={`h-full transition-all duration-700 ${progressColor}`} style={{ width: `${Math.min(currentScore, 100)}%` }}></div>
+                                    <div className="h-full progress-bar" style={{ width: `${Math.min(currentScore, 100)}%`, backgroundColor: progressColor }}></div>
                                 </div>
                             </div>
 
@@ -298,28 +336,28 @@
                                             ))}
                                         </div>
                                     </>
-                                ) : <div className="text-center py-20 text-gray-400 italic">正在加载题目...</div>}
+                                ) : null}
                             </main>
                         </div>
                     )}
 
                     {view === 'review' && (
-                        <div className="p-6 pt-10 max-w-lg mx-auto w-full animate-in slide-in-from-right-10">
+                        <div className="p-6 pt-10 max-w-lg mx-auto w-full animate-in slide-in-from-right-10 text-left">
                             <div className="flex items-center space-x-4 mb-10">
                                 <button onClick={() => setView('dashboard')} className="w-12 h-12 rounded-full bg-white border flex items-center justify-center shadow-lg text-gray-400 active:scale-95"><i className="fa-solid fa-arrow-left"></i></button>
                                 <h2 className="text-2xl font-black">错题挑战</h2>
                             </div>
                             {appData.wrongQuestions.length === 0 ? (
-                                <div className="text-center py-40 text-gray-300 italic">暂无错题，继续保持！</div>
+                                <div className="text-center py-40 text-gray-300 italic">暂无错题，继续加油！</div>
                             ) : (
                                 <div className="space-y-4">
                                     {appData.wrongQuestions.map(q => (
                                         <div key={q.id} className="bg-white p-6 rounded-[2rem] border-2 border-gray-50 flex justify-between items-center shadow-md">
-                                            <div className="flex-1 pr-4">
+                                            <div className="flex-1 pr-4 text-left">
                                                 <p className="text-[9px] font-black text-pink-400 mb-1 uppercase tracking-widest">{q.level}</p>
                                                 <p className="font-bold text-gray-700 line-clamp-1">{q.text}</p>
                                             </div>
-                                            <button onClick={() => startTest(q.level, q.category, [q])} className="bg-rose-500 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg">挑战</button>
+                                            <button onClick={() => startTest(q.level, q.category, [q])} className="bg-rose-500 text-white px-5 py-2.5 rounded-2xl text-xs font-black">挑战</button>
                                         </div>
                                     ))}
                                 </div>
@@ -331,26 +369,26 @@
                         <div className="fixed inset-0 z-[60] flex items-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
                             <div className="bg-white w-full rounded-t-[3.5rem] p-8 max-h-[85vh] overflow-y-auto no-scrollbar shadow-2xl animate-in slide-in-from-bottom-20 duration-500">
                                 <div className="flex items-center justify-between mb-8">
-                                    <div className="flex items-center space-x-4">
+                                    <div className="flex items-center space-x-4 text-left">
                                         <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${test.isCorrect ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
                                             <i className={`fa-solid ${test.isCorrect ? 'fa-check' : 'fa-times'}`}></i>
                                         </div>
                                         <div>
                                             <h3 className="font-black text-xl">{test.isCorrect ? '正解！' : '违います'}</h3>
-                                            <p className="text-[10px] font-bold opacity-40 uppercase tracking-tighter">正确答案: {test.queue[test.currentIndex].options[test.queue[test.currentIndex].correctIndex]}</p>
+                                            <p className="text-[10px] font-bold opacity-40 uppercase tracking-tighter text-left">正确答案: {test.queue[test.currentIndex].options[test.queue[test.currentIndex].correctIndex]}</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => media.speak(test.queue[test.currentIndex].text)} className="w-12 h-12 rounded-full bg-pink-50 text-pink-500 active:bg-pink-100 transition-colors">
+                                    <button onClick={() => media.speak(test.queue[test.currentIndex].text)} className="w-12 h-12 rounded-full bg-pink-50 text-pink-500 active:bg-pink-100">
                                         <i className="fa-solid fa-volume-high"></i>
                                     </button>
                                 </div>
-                                <div className="space-y-6 pb-12">
+                                <div className="space-y-6 pb-12 text-left">
                                     <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 italic text-gray-700 text-lg leading-relaxed">“ {test.queue[test.currentIndex].translation} ”</div>
                                     <div className="px-2">
                                         <p className="text-[10px] font-black text-green-500 mb-2 uppercase tracking-widest">核心解析 Analysis</p>
                                         <p className="text-gray-800 font-medium leading-relaxed">{test.queue[test.currentIndex].coreAnalysis}</p>
                                     </div>
-                                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">{test.queue[test.currentIndex].wrongOptionsAnalysis}</div>
+                                    <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">{test.queue[test.currentIndex].wrongOptionsAnalysis}</div>
                                     <button onClick={next} className="w-full bg-indigo-600 text-white font-black py-6 rounded-[2rem] shadow-xl flex items-center justify-center space-x-3 active:scale-95 transition-transform">
                                         <span>下一题 / 次へ</span>
                                         <i className="fa-solid fa-arrow-right"></i>
@@ -365,7 +403,7 @@
                             <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-12 text-center shadow-2xl border-4 border-pink-50 animate-in zoom-in duration-500">
                                 <i className="fa-solid fa-crown text-7xl text-yellow-400 mb-8 drop-shadow-xl animate-bounce"></i>
                                 <h2 className="text-3xl font-black text-gray-800 mb-3">精通达成！</h2>
-                                <p className="text-gray-500 text-sm leading-relaxed mb-10 italic">恭喜达成【{masteryModal.lvl}】100% 精通。新等级已为您解锁！</p>
+                                <p className="text-gray-500 text-sm leading-relaxed mb-10 italic">恭喜达成【{masteryModal.lvl}】100% 精通。新等级已解锁！</p>
                                 <div className="space-y-4">
                                     <button onClick={() => setMasteryModal(null)} className="w-full bg-pink-500 text-white font-black py-5 rounded-3xl shadow-xl active:scale-95 transition-all">继续强化</button>
                                     <button onClick={() => { setMasteryModal(null); setView('dashboard'); }} className="w-full bg-gray-100 text-gray-500 font-bold py-5 rounded-3xl active:scale-95 transition-all">返回主页</button>
